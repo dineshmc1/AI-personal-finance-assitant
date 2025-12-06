@@ -1,5 +1,5 @@
 // screens/DashboardScreen.js
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   ScrollView, 
   View, 
@@ -22,16 +22,70 @@ const { width, height } = Dimensions.get('window');
 
 export default function DashboardScreen({ navigation }) {
   const { colors } = useTheme();
-  const { transactions, budgets = [], loadTransactions, loadBudgets } = useTransactions();
+  // 1. 引入 calendarEvents 和 loadCalendarEvents
+  const { 
+    transactions, 
+    budgets = [], 
+    calendarEvents = {}, 
+    loadTransactions, 
+    loadBudgets, 
+    loadCalendarEvents 
+  } = useTransactions();
+
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState('month');
   const [chartModalVisible, setChartModalVisible] = useState(false);
   const [selectedChartType, setSelectedChartType] = useState('income');
 
+  // 初始化加载日历
+  useEffect(() => {
+    loadCalendarEvents();
+  }, []);
+
+  // === 计算即将到期的账单 (未来 7 天) ===
+  const upcomingBills = useMemo(() => {
+    if (!calendarEvents || Object.keys(calendarEvents).length === 0) return [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+
+    const bills = [];
+
+    // 遍历日历对象 (Key 是日期字符串 "YYYY-MM-DD")
+    Object.keys(calendarEvents).forEach(dateStr => {
+      const eventDate = new Date(dateStr);
+      // 只关心今天及未来7天内的
+      if (eventDate >= today && eventDate <= nextWeek) {
+        const dayEvents = calendarEvents[dateStr];
+        dayEvents.forEach(event => {
+          // 只显示 "Bill Due" 或 "User Bill" 类型的支出
+          if (event.type === 'Bill Due' || event.type === 'User Bill') {
+            // 计算还有几天
+            const diffTime = Math.abs(eventDate - today);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            
+            bills.push({
+              ...event,
+              date: eventDate,
+              daysLeft: diffDays,
+              displayDate: eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            });
+          }
+        });
+      }
+    });
+
+    // 按日期排序，只取前3个
+    return bills.sort((a, b) => a.date - b.date).slice(0, 3); 
+  }, [calendarEvents]);
+
+
   // === 1. Calculate financial metrics (Income, Expense, Savings) ===
   const financialData = useMemo(() => {
     const currentDate = new Date();
-    // Reset time to start of day to avoid partial day issues
     currentDate.setHours(23, 59, 59, 999); 
     
     let startDate = new Date();
@@ -41,15 +95,12 @@ export default function DashboardScreen({ navigation }) {
 
     switch (timeRange) {
       case 'week':
-        // Last 7 days
         startDate.setDate(currentDate.getDate() - 6); 
         break;
       case 'month':
-        // Start of current month
         startDate.setDate(1); 
         break;
       case 'year':
-        // Start of current year
         startDate.setMonth(0, 1); 
         break;
       default:
@@ -73,7 +124,6 @@ export default function DashboardScreen({ navigation }) {
     const savings = income - expenses;
     const savingsRate = income > 0 ? (savings / income) * 100 : 0;
 
-    // Category-wise spending
     const categorySpending = filteredTransactions
       .filter(t => t.type === 'expend' || t.type === 'Expense')
       .reduce((acc, transaction) => {
@@ -84,7 +134,6 @@ export default function DashboardScreen({ navigation }) {
         return acc;
       }, {});
 
-    // Category-wise income
     const categoryIncome = filteredTransactions
       .filter(t => t.type === 'income' || t.type === 'Income')
       .reduce((acc, transaction) => {
@@ -95,13 +144,11 @@ export default function DashboardScreen({ navigation }) {
         return acc;
       }, {});
 
-    // Top spending categories
     const topSpendingCategories = Object.entries(categorySpending)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 5)
       .map(([category, amount]) => ({ category, amount }));
 
-    // Top income categories
     const topIncomeCategories = Object.entries(categoryIncome)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 5)
@@ -118,23 +165,19 @@ export default function DashboardScreen({ navigation }) {
     };
   }, [transactions, timeRange]);
 
-  // === 2. Budget progress calculation (Fixed) ===
+  // === 2. Budget progress calculation ===
   const budgetProgress = useMemo(() => {
     const safeBudgets = Array.isArray(budgets) ? budgets : [];
     
-    // Base monthly budget
     let totalBudget = safeBudgets.reduce((sum, b) => sum + (b.allocated || 0), 0);
     
-    // Adjust budget based on view
     if (timeRange === 'week') {
-        totalBudget = totalBudget / 4.3; // Approx weeks in a month
+        totalBudget = totalBudget / 4.3; 
     } else if (timeRange === 'year') {
         totalBudget = totalBudget * 12;
     }
 
-    // Use calculated expenses from financialData to ensure consistency
     const totalSpent = financialData.expenses;
-
     const progress = totalBudget > 0 ? (totalSpent / totalBudget) : 0;
 
     return {
@@ -149,24 +192,19 @@ export default function DashboardScreen({ navigation }) {
     setRefreshing(true);
     await Promise.all([
         loadTransactions(), 
-        loadBudgets() 
+        loadBudgets(),
+        loadCalendarEvents() // 刷新日历
     ]);
     setRefreshing(false);
   };
 
-  // Helper functions (Icon, Format, Bar Width)
   const getCategoryIcon = (category) => {
-    const icons = {
-      'Food': 'food', 'Transport': 'car', 'Shopping': 'cart', 'Bills': 'file-document',
-      'Entertainment': 'movie', 'Healthcare': 'hospital', 'Education': 'school',
-      'Salary': 'cash', 'Freelance': 'cash', 'Investment': 'chart-line',
-      'Gift': 'gift', 'Bonus': 'star', 'Other': 'cash'
-    };
-    return icons[category] || 'cash';
+    // 简单映射，你可以复用 Context 里的 getIconForCategory
+    return 'cash'; 
   };
 
   const formatAmount = (amount) => {
-    return `RM ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `RM ${Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getBarWidth = (amount, maxAmount) => {
@@ -174,7 +212,6 @@ export default function DashboardScreen({ navigation }) {
     return Math.max((amount / maxAmount) * 100, 10);
   };
 
-  // Safe transaction slicing for "Recent Activity"
    const recentTransactions = useMemo(() => {
     if (!Array.isArray(transactions)) return [];
     
@@ -184,7 +221,6 @@ export default function DashboardScreen({ navigation }) {
       .slice(0, 3);
   }, [transactions]);
 
-  // Max amounts for bar charts
   const maxSpending = financialData.topSpendingCategories.length > 0 
     ? Math.max(...financialData.topSpendingCategories.map(item => item.amount))
     : 0;
@@ -193,7 +229,6 @@ export default function DashboardScreen({ navigation }) {
     ? Math.max(...financialData.topIncomeCategories.map(item => item.amount))
     : 0;
 
-  // Chart Data Preparation
   const chartData = {
     income: financialData.topIncomeCategories.map((item, index) => ({
       ...item,
@@ -212,7 +247,6 @@ export default function DashboardScreen({ navigation }) {
     setChartModalVisible(true);
   };
 
-  // Render Helpers
   const renderPieChart = (data, totalAmount) => {
     if (data.length === 0) {
       return (
@@ -386,6 +420,55 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
+        {/* === Upcoming Bills Section (修改版：空状态也显示) === */}
+        <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <MaterialCommunityIcons name="calendar-clock" size={24} color="#FFA726" />
+              <Text style={[styles.sectionTitle, { color: colors.onSurface, marginLeft: 8 }]}>
+                Upcoming Bills
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Calendar')}>
+              <Text style={[styles.seeAllText, { color: colors.primary }]}>View All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {upcomingBills.length > 0 ? (
+            upcomingBills.map((bill, index) => (
+              <View key={index} style={styles.billItem}>
+                <View style={styles.billIconContainer}>
+                  <View style={[styles.billIcon, { backgroundColor: '#FFF3E0' }]}>
+                    <MaterialCommunityIcons name="file-document-outline" size={20} color="#FFA726" />
+                  </View>
+                  <View style={styles.billDetails}>
+                    <Text style={[styles.billName, { color: colors.onSurface }]}>{bill.name}</Text>
+                    <Text style={[styles.billDate, { color: colors.onSurface, opacity: 0.6 }]}>
+                      Due {bill.daysLeft === 0 ? 'Today' : bill.daysLeft === 1 ? 'Tomorrow' : `in ${bill.daysLeft} days`} ({bill.displayDate})
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.billAmount, { color: '#F44336' }]}>
+                  {formatAmount(bill.amount)}
+                </Text>
+              </View>
+            ))
+          ) : (
+            // === 这里显示空状态，而不是隐藏 ===
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <MaterialCommunityIcons name="check-circle-outline" size={40} color={colors.onSurface} style={{ opacity: 0.2, marginBottom: 8 }} />
+              <Text style={{ color: colors.onSurface, opacity: 0.6, fontSize: 14 }}>
+                No bills due in the next 7 days.
+              </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Calendar')}>
+                 <Text style={{ color: colors.primary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>
+                    Check Calendar to Add Bill
+                 </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         {/* Budget Progress Section */}
         <View style={[styles.section, { backgroundColor: colors.surface }]}>
           <View style={styles.sectionHeader}>
@@ -533,7 +616,7 @@ export default function DashboardScreen({ navigation }) {
             recentTransactions.map((transaction) => (
               <View key={transaction.id} style={styles.recentItem}>
                 <View style={[styles.recentIcon, { backgroundColor: (transaction.type === 'income' || transaction.type === 'Income') ? '#E8F5E8' : '#FFEBEE' }]}>
-                  <MaterialCommunityIcons name={getCategoryIcon(transaction.category)} size={18} color={(transaction.type === 'income' || transaction.type === 'Income') ? '#4CAF50' : '#F44336'} />
+                  <MaterialCommunityIcons name="cash" size={18} color={(transaction.type === 'income' || transaction.type === 'Income') ? '#4CAF50' : '#F44336'} />
                 </View>
                 <View style={styles.recentDetails}>
                   <Text style={[styles.recentCategory, { color: colors.onSurface }]}>{transaction.category}</Text>
@@ -702,4 +785,38 @@ const styles = StyleSheet.create({
   legendAmount: { fontSize: 14, fontWeight: 'bold' },
   legendPercentage: { fontSize: 12, opacity: 0.7, marginTop: 2 },
   modalBottomPadding: { height: 20 },
+  
+  // === 新增：Bill Item 样式 ===
+  billItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  billIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  billIcon: {
+    padding: 8,
+    borderRadius: 10,
+    marginRight: 12,
+  },
+  billDetails: {
+    justifyContent: 'center',
+  },
+  billName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  billDate: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  billAmount: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
 });

@@ -75,7 +75,6 @@ async def create_bill(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create bill.")
 
 
-# === 修改：增加 db 参数 ===
 async def generate_bill_events(user_id: str, start_date: date, end_date: date, db: Any) -> List[CalendarEvent]:
     """Generates all user-defined bill events within the date range, handling recurrence."""
     if not db:
@@ -89,19 +88,24 @@ async def generate_bill_events(user_id: str, start_date: date, end_date: date, d
         
         for doc in docs:
             bill_data = doc.to_dict()
-            bill_data['next_due_date'] = date.fromisoformat(bill_data['next_due_date'])
+            # 确保 next_due_date 是 date 对象
+            if isinstance(bill_data['next_due_date'], str):
+                bill_data['next_due_date'] = date.fromisoformat(bill_data['next_due_date'])
+                
             bill = BillDB(id=doc.id, **bill_data)
             
             current_date = bill.next_due_date
             
             one_cycle = timedelta(days=365) if bill.frequency == "Annually" else timedelta(days=30)
             
+            # 向前倒推日期，确保周期正确覆盖查询范围
             while current_date > start_date + one_cycle:
                 current_date = current_date - one_cycle
                 
             while current_date <= end_date:
                 if current_date >= start_date:
                     events.append(CalendarEvent(
+                        id=bill.id, # <--- 关键修改：传入 bill.id
                         event_date=current_date,
                         type="User Bill",
                         name=f"{bill.name} (RM {bill.amount:.2f})",
@@ -234,3 +238,69 @@ async def get_cash_flow_calendar_report(
     except Exception as e:
         logging.error(f"Calendar Report Generation Failed: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate calendar report: {str(e)}")
+    
+    # === 新增：Delete Bill ===
+@calendar_router.delete("/bill/{bill_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_bill(
+    bill_id: str,
+    user_id: Annotated[str, Depends(get_current_user_id)]
+):
+    """Deletes a recurring bill."""
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable")
+
+    try:
+        bill_ref = db.collection('bills').document(bill_id)
+        bill_doc = bill_ref.get()
+        
+        if not bill_doc.exists:
+            raise HTTPException(status_code=404, detail="Bill not found")
+            
+        if bill_doc.to_dict().get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+            
+        bill_ref.delete()
+        return
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error deleting bill: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete bill")
+
+
+# === 新增：Update Bill ===
+@calendar_router.put("/bill/{bill_id}", response_model=BillDB)
+async def update_bill(
+    bill_id: str,
+    bill_update: BillCreate,
+    user_id: Annotated[str, Depends(get_current_user_id)]
+):
+    """Updates an existing bill."""
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable")
+
+    try:
+        bill_ref = db.collection('bills').document(bill_id)
+        bill_doc = bill_ref.get()
+        
+        if not bill_doc.exists:
+            raise HTTPException(status_code=404, detail="Bill not found")
+            
+        if bill_doc.to_dict().get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+            
+        update_data = bill_update.model_dump()
+        update_data['user_id'] = user_id
+        update_data['next_due_date'] = bill_update.next_due_date.isoformat()
+        
+        bill_ref.update(update_data)
+        
+        return BillDB(id=bill_id, **update_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating bill: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update bill")

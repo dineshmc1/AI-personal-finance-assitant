@@ -56,6 +56,7 @@ export const TransactionProvider = ({ children }) => {
   const [goals, setGoals] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState({});
 
   // === 1. 初始化加载 ===
   useEffect(() => {
@@ -298,6 +299,21 @@ export const TransactionProvider = ({ children }) => {
       throw error;
     } finally {
       setLoading(false);
+    }
+  };
+
+  // === 新增：加载日历事件 ===
+  const loadCalendarEvents = async () => {
+    try {
+      const today = new Date();
+      // 获取当前月份的日历数据
+      // 注意：这里的 API 路径对应后端 calendar_router 的 /report
+      const data = await apiRequest(`/calendar/report?month=${today.getMonth() + 1}&year=${today.getFullYear()}`);
+      if (data) {
+        setCalendarEvents(data);
+      }
+    } catch (error) {
+      console.error('Error loading calendar events:', error);
     }
   };
 
@@ -548,10 +564,13 @@ export const TransactionProvider = ({ children }) => {
 
   const value = {
     // State
-    transactions, accounts, budgets, goals, categories, loading,
+    transactions, accounts, budgets, goals, categories, loading, calendarEvents,
     
     // Core Actions
     loadAccounts, uploadReceipt, addTransaction,
+
+    // Calendar Actions
+    loadCalendarEvents, 
     
     // Goal Actions
     loadGoals, addGoal, updateGoalProgress, deleteGoal,

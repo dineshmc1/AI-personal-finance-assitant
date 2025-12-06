@@ -130,6 +130,7 @@ class BillDB(BillCreate):
 
 # === Calendar 模型 ===
 class CalendarEvent(BaseModel):
+    id: Optional[str] = None 
     event_date: date
     type: Literal["Bill Due", "Income Expected", "Budget Reset", "User Bill"]
     name: str

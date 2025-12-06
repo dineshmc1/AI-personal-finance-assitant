@@ -19,7 +19,8 @@ def normalize_text(text: str) -> str:
     """Standardize text for comparison."""
     return str(text).strip().lower().replace('.', '').replace(',', '').replace(' ', '')
 
-def calculate_recurring_metrics(group: pd.DataFrame) -> Dict[str, Any]:
+# === 修改 1: 返回类型改为 pd.Series ===
+def calculate_recurring_metrics(group: pd.DataFrame) -> pd.Series:
     """Calculates stability metrics for a potential recurring group."""
     
     dates = pd.to_datetime(group['transaction_date']).sort_values()
@@ -42,7 +43,8 @@ def calculate_recurring_metrics(group: pd.DataFrame) -> Dict[str, Any]:
     
     merchant = group['merchant'].iloc[0]
     
-    return {
+    # === 修复：返回 pd.Series 而不是 dict，确保结果生成 DataFrame ===
+    return pd.Series({
         "count": len(group),
         "amount_mean": round(avg_amount, 2),
         "amount_deviation": round(amount_variation, 4), 
@@ -50,7 +52,7 @@ def calculate_recurring_metrics(group: pd.DataFrame) -> Dict[str, Any]:
         "last_date": last_date.isoformat(),
         "next_projected_date": next_date.isoformat() if next_date else None,
         "merchant": merchant,
-    }
+    })
 
 
 def find_similar_merchants(df: pd.DataFrame) -> pd.DataFrame:
@@ -107,11 +109,16 @@ def detect_recurring_transactions(
     
     flow_df['amount_group'] = (flow_df['amount'] * 10).round(0) / 10 
     
-    recurring_candidates = flow_df.groupby(['canonical_merchant', 'amount_group']).apply(calculate_recurring_metrics).reset_index(drop=True)
+    # === 修改 2: 添加 include_groups=False 消除警告 ===
+    recurring_candidates = flow_df.groupby(['canonical_merchant', 'amount_group']).apply(
+        calculate_recurring_metrics, 
+        include_groups=False
+    ).reset_index(drop=True)
 
     
     filtered_candidates = []
     
+    # 现在 recurring_candidates 是 DataFrame，一定有 iterrows 方法
     for _, row in recurring_candidates.iterrows():
         if row['count'] < MIN_OCCURRENCES:
             continue
