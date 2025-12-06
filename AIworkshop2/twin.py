@@ -1,0 +1,301 @@
+# AI workshop 2/twin.py
+from fastapi import APIRouter, HTTPException, Depends, status
+from typing import Annotated, List, Dict, Any
+from firebase_admin import firestore
+from datetime import date, datetime
+import uuid
+
+from auth_deps import get_current_user_id
+from models import (
+    GamificationProfile, 
+    Badge, 
+    TwinDashboard, 
+    TwinScenario
+)
+
+twin_router = APIRouter(prefix="/twin", tags=["Digital Twin & Gamification"])
+
+LEVEL_XP_BASE = 1000
+XP_PER_TRANSACTION = 10
+XP_BEAT_EASY = 100
+XP_BEAT_MEDIUM = 300
+XP_BEAT_HARD = 500
+
+# === 修改：更稳健的 get_db 函数 ===
+def get_db():
+    try:
+        return firestore.client()
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        return None
+
+def calculate_level(xp: int) -> tuple[int, int]:
+    """Returns (current_level, xp_needed_for_next_level)"""
+    level = (xp // LEVEL_XP_BASE) + 1
+    next_level_xp = level * LEVEL_XP_BASE
+    return level, next_level_xp
+
+def get_or_create_profile(user_id: str, db) -> GamificationProfile:
+    """Fetches user gamification profile or creates a default one."""
+    doc_ref = db.collection('gamification').document(user_id)
+    doc = doc_ref.get()
+    
+    if doc.exists:
+        data = doc.to_dict()
+        badges = [Badge(**b) for b in data.get('badges', [])]
+        return GamificationProfile(
+            user_id=user_id,
+            level=data.get('level', 1),
+            current_xp=data.get('current_xp', 0),
+            xp_to_next_level=data.get('xp_to_next_level', 1000),
+            total_battles_won=data.get('total_battles_won', 0),
+            badges=badges
+        )
+    else:
+        new_profile = GamificationProfile(user_id=user_id)
+        doc_ref.set(new_profile.model_dump())
+        return new_profile
+
+def update_xp(user_id: str, amount: int, db):
+    """Adds XP and updates level."""
+    profile = get_or_create_profile(user_id, db)
+    profile.current_xp += amount
+    
+    new_level, next_xp = calculate_level(profile.current_xp)
+    
+    if new_level > profile.level:
+        pass 
+
+    profile.level = new_level
+    profile.xp_to_next_level = next_xp
+    
+    db.collection('gamification').document(user_id).set(profile.model_dump())
+    return profile
+
+def generate_twin_logic(user_income: float, user_expenses: float, transactions: List[Dict]) -> Dict[str, TwinScenario]:
+    """
+    Generates the 3 levels of Digital Twins based on user data.
+    """
+    needs_categories = ["Housing", "Transportation", "Vehicle", "Financial Expenses", "Income"]
+    wants_categories = ["Food", "Shopping", "Entertainment", "Other"]
+    
+    user_needs = 0.0
+    user_wants = 0.0
+    
+    for t in transactions:
+        if t['type'] == "Expense":
+            if t['category'] in needs_categories:
+                user_needs += t['amount']
+            elif t['category'] in wants_categories:
+                user_wants += t['amount']
+            else:
+                user_wants += t['amount'] 
+
+    user_balance = user_income - user_expenses
+    user_savings_rate = (user_balance / user_income * 100) if user_income > 0 else 0
+    
+    # Easy Twin logic
+    easy_wants = user_wants * 0.90
+    easy_needs = user_needs 
+    easy_expense = easy_needs + easy_wants
+    easy_balance = user_income - easy_expense
+    
+    easy_twin = TwinScenario(
+        difficulty="Easy Twin",
+        income=user_income,
+        expenses=easy_expense,
+        balance=easy_balance,
+        savings_rate=(easy_balance / user_income * 100) if user_income > 0 else 0,
+        description="Cuts discretionary spending (Food, Shopping) by 10%.",
+        needs=easy_needs,
+        wants=easy_wants,
+        savings=easy_balance
+    )
+
+    # Medium Twin logic
+    med_wants = user_wants * 0.75
+    med_needs = user_needs * 0.95
+    med_expense = med_needs + med_wants
+    med_balance = user_income - med_expense
+    
+    medium_twin = TwinScenario(
+        difficulty="Medium Twin",
+        income=user_income,
+        expenses=med_expense,
+        balance=med_balance,
+        savings_rate=(med_balance / user_income * 100) if user_income > 0 else 0,
+        description="Optimizes bills by 5% and cuts wants by 25%.",
+        needs=med_needs,
+        wants=med_wants,
+        savings=med_balance
+    )
+
+    # Hard Twin logic
+    target_expense = user_income * 0.80
+    
+    if user_expenses < target_expense:
+        hard_expense = user_expenses * 0.95
+    else:
+        hard_expense = target_expense
+        
+    hard_balance = user_income - hard_expense
+    
+    hard_needs = hard_expense * (50/80) 
+    hard_wants = hard_expense * (30/80)
+
+    hard_twin = TwinScenario(
+        difficulty="Hard Twin",
+        income=user_income, 
+        expenses=hard_expense,
+        balance=hard_balance,
+        savings_rate=(hard_balance / user_income * 100) if user_income > 0 else 0,
+        description="Targeting the Golden 50/30/20 Rule.",
+        needs=hard_needs,
+        wants=hard_wants,
+        savings=hard_balance
+    )
+    
+    user_scenario = TwinScenario(
+        difficulty="User (You)",
+        income=user_income,
+        expenses=user_expenses,
+        balance=user_balance,
+        savings_rate=user_savings_rate,
+        description="Your actual financial performance this month.",
+        needs=user_needs,
+        wants=user_wants,
+        savings=user_balance
+    )
+    
+    return {
+        "user": user_scenario,
+        "easy": easy_twin,
+        "medium": medium_twin,
+        "hard": hard_twin
+    }
+
+
+@twin_router.get("/dashboard", response_model=TwinDashboard)
+async def get_twin_dashboard(
+    user_id: Annotated[str, Depends(get_current_user_id)]
+):
+    """
+    Get the gamified dashboard comparing User vs Twins for the current month.
+    """
+    db = get_db() # 获取 DB
+    if not db:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
+    
+    today = date.today()
+    start_date = date(today.year, today.month, 1).isoformat()
+    
+    transactions_ref = db.collection('transactions')\
+        .where("user_id", "==", user_id)\
+        .where("transaction_date", ">=", start_date)
+        
+    docs = transactions_ref.stream()
+    
+    transactions = []
+    total_income = 0.0
+    total_expenses = 0.0
+    
+    for doc in docs:
+        t = doc.to_dict()
+        transactions.append(t)
+        if t['type'] == 'Income':
+            total_income += t['amount']
+        else:
+            total_expenses += t['amount']
+            
+    scenarios = generate_twin_logic(total_income, total_expenses, transactions)
+    
+    profile = get_or_create_profile(user_id, db)
+    
+    user_bal = scenarios['user'].balance
+    status_msg = "Keep pushing! The twins are winning."
+    
+    if user_bal > scenarios['hard'].balance:
+        status_msg = "UNSTOPPABLE! You are beating the Hard Twin! 🏆"
+    elif user_bal > scenarios['medium'].balance:
+        status_msg = "Great job! You're beating the Medium Twin. Next stop: Hard."
+    elif user_bal > scenarios['easy'].balance:
+        status_msg = "Good start! You're beating the Easy Twin."
+        
+    return TwinDashboard(
+        user_stats=scenarios['user'],
+        easy_twin=scenarios['easy'],
+        medium_twin=scenarios['medium'],
+        hard_twin=scenarios['hard'],
+        gamification_profile=profile,
+        battle_status=status_msg
+    )
+
+@twin_router.post("/claim-xp")
+async def claim_monthly_xp(
+    user_id: Annotated[str, Depends(get_current_user_id)]
+):
+    """
+    Call this at the end of the month (or manually) to claim XP based on performance.
+    """
+    db = get_db() # 获取 DB
+    if not db:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
+    
+    today = date.today()
+    start_date = date(today.year, today.month, 1).isoformat()
+    
+    transactions_ref = db.collection('transactions')\
+        .where("user_id", "==", user_id)\
+        .where("transaction_date", ">=", start_date)
+    docs = transactions_ref.stream()
+    
+    total_income = 0.0
+    total_expenses = 0.0
+    tx_list = []
+    for doc in docs:
+        t = doc.to_dict()
+        tx_list.append(t)
+        if t['type'] == 'Income':
+            total_income += t['amount']
+        else:
+            total_expenses += t['amount']
+
+    scenarios = generate_twin_logic(total_income, total_expenses, tx_list)
+    
+    user_bal = scenarios['user'].balance
+    xp_gained = 0
+    badges_earned = []
+    
+    if user_bal > scenarios['easy'].balance:
+        xp_gained += XP_BEAT_EASY
+    if user_bal > scenarios['medium'].balance:
+        xp_gained += XP_BEAT_MEDIUM
+    if user_bal > scenarios['hard'].balance:
+        xp_gained += XP_BEAT_HARD
+        badges_earned.append(Badge(
+            id=str(uuid.uuid4()),
+            name="Twin Slayer",
+            description="Beat the Hard Twin in a monthly battle.",
+            icon="🤖",
+            date_earned=date.today()
+        ))
+
+    if xp_gained == 0:
+        return {"message": "Keep trying! No XP gained this time.", "xp_gained": 0}
+
+    profile = get_or_create_profile(user_id, db)
+    profile.current_xp += xp_gained
+    profile.total_battles_won += 1 if xp_gained > 0 else 0
+    profile.badges.extend(badges_earned)
+    
+    new_level, next_xp = calculate_level(profile.current_xp)
+    profile.level = new_level
+    profile.xp_to_next_level = next_xp
+    
+    db.collection('gamification').document(user_id).set(profile.model_dump())
+    
+    return {
+        "message": f"Victory! You gained {xp_gained} XP.",
+        "new_level": new_level,
+        "badges_earned": [b.name for b in badges_earned]
+    }

@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Finance Assistant to access your camera to scan receipts.",
+          "microphonePermission": "Allow Finance Assistant to access your microphone for video recordings."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you upload receipts."
+        }
+      ]
+    ]
+  }
+}
