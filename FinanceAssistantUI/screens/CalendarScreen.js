@@ -27,8 +27,8 @@ export default function CalendarScreen({ navigation }) {
   
   // === Modal State ===
   const [showModal, setShowModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); // 判断是新增还是编辑
-  const [editingId, setEditingId] = useState(null); // 编辑时的 Bill ID
+  const [isEditing, setIsEditing] = useState(false); 
+  const [editingId, setEditingId] = useState(null); 
 
   const [billForm, setBillForm] = useState({
     name: "",
@@ -49,7 +49,6 @@ export default function CalendarScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  // === 1. 打开新增窗口 ===
   const openAddModal = () => {
     setIsEditing(false);
     setEditingId(null);
@@ -63,15 +62,12 @@ export default function CalendarScreen({ navigation }) {
     setShowModal(true);
   };
 
-  // === 2. 打开编辑窗口 (修复版) ===
   const openEditModal = (event) => {
-    // 只有用户手动添加的 "User Bill" 才能编辑，自动检测的不可编辑
     if (event.type !== 'User Bill') {
       Alert.alert("Info", "This is an automatically detected recurring payment. You cannot edit it manually here.");
       return;
     }
     
-    // 必须有 ID 才能编辑
     if (!event.id) {
       Alert.alert("Error", "Cannot edit this bill (Missing ID). Try deleting it instead.");
       return;
@@ -80,16 +76,15 @@ export default function CalendarScreen({ navigation }) {
     setIsEditing(true);
     setEditingId(event.id);
     setBillForm({
-      name: event.name.split(' (RM')[0], // 简单处理一下名字，去掉 "(RM xxx)"
+      name: event.name.split(' (RM')[0], 
       amount: Math.abs(event.amount).toString(),
-      next_due_date: event.event_date || selectedDate, // 使用事件日期作为下次到期日
-      frequency: "Monthly", // 默认，如果 API 返回了 frequency 更好
+      next_due_date: event.event_date || selectedDate, 
+      frequency: "Monthly", 
       category: "Housing"
     });
     setShowModal(true);
   };
 
-  // === 3. 处理保存 (Create & Update) ===
   const handleSaveBill = async () => {
     if (!billForm.name || !billForm.amount) {
       Alert.alert("Error", "Please fill in name and amount.");
@@ -107,14 +102,12 @@ export default function CalendarScreen({ navigation }) {
       };
 
       if (isEditing && editingId) {
-        // === Update (PUT) ===
         await apiRequest(`/calendar/bill/${editingId}`, {
           method: 'PUT',
           body: JSON.stringify(payload)
         });
         Alert.alert("Success", "Bill updated successfully!");
       } else {
-        // === Create (POST) ===
         await apiRequest('/calendar/bill', {
           method: 'POST',
           body: JSON.stringify(payload)
@@ -123,7 +116,7 @@ export default function CalendarScreen({ navigation }) {
       }
 
       setShowModal(false);
-      await loadCalendarEvents(); // 刷新列表
+      await loadCalendarEvents();
     } catch (error) {
       console.error(error);
       Alert.alert("Error", `Failed to ${isEditing ? 'update' : 'save'} bill.`);
@@ -132,7 +125,6 @@ export default function CalendarScreen({ navigation }) {
     }
   };
 
-  // === 4. 处理删除 (Delete) ===
   const handleDeleteBill = (event) => {
     if (event.type !== 'User Bill') return;
 
@@ -153,7 +145,7 @@ export default function CalendarScreen({ navigation }) {
              try {
                 await apiRequest(`/calendar/bill/${event.id}`, { method: 'DELETE' });
                 Alert.alert("Deleted", "Bill deleted successfully.");
-                loadCalendarEvents(); // 刷新
+                loadCalendarEvents(); 
              } catch(e) { 
                  console.error(e);
                  Alert.alert("Error", "Failed to delete bill."); 
@@ -164,7 +156,6 @@ export default function CalendarScreen({ navigation }) {
     );
   };
 
-  // 格式化标记点
   const markedDates = useMemo(() => {
     const marks = {};
     if (calendarEvents) {
@@ -203,7 +194,6 @@ export default function CalendarScreen({ navigation }) {
           current={selectedDate}
           onDayPress={day => {
             setSelectedDate(day.dateString);
-            // 只有在新增模式下，点击日期才自动填充日期
             if (!isEditing) {
                 setBillForm(prev => ({ ...prev, next_due_date: day.dateString }));
             }

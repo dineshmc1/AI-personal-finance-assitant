@@ -26,12 +26,11 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 import datetime
 from categories import categories_router
-import traceback # 用于打印详细错误日志
+import traceback
 
 FIREBASE_CREDENTIAL_PATH = './serviceAccountKey.json'
 FIREBASE_STORAGE_BUCKET = "ai-personal-finance-assi-bdf76.firebasestorage.app" 
 
-# === 1. 初始化 Firebase ===
 try:
     cred = credentials.Certificate(FIREBASE_CREDENTIAL_PATH)
     app_instance = initialize_app(cred, {'storageBucket': FIREBASE_STORAGE_BUCKET}) 
@@ -39,7 +38,6 @@ try:
 except Exception as e:
     print(f"Firebase Initialization Error: {e}")
 
-# === 2. 获取 DB 的辅助函数 ===
 def get_db():
     try:
         return firestore.client()
@@ -100,18 +98,14 @@ async def create_manual_transaction(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
     try:
-        # 传入 db
         check_account_ownership(user_id, transaction_data.account_id, db)
         
         transaction_dict = transaction_data.model_dump()
         transaction_dict['user_id'] = user_id
-        
-        # 转换日期为字符串
+
         transaction_dict['transaction_date'] = transaction_data.transaction_date.isoformat()
-        
-        # === 修复：如果前端没有传 transaction_time，则默认设为当前时间 ===
+
         if not transaction_dict.get('transaction_time'):
-             # 格式化为 HH:MM
             transaction_dict['transaction_time'] = datetime.datetime.now().strftime("%H:%M")
         
         doc_ref = db.collection('transactions').add(transaction_dict)
@@ -333,7 +327,6 @@ async def get_rl_optimization_report(
         print(f"Unexpected error during RL report generation: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred during portfolio optimization.")
 
-# === 修改：将这两个内部函数改为 async (异步)，以便在 simulation.py 中被 await 调用 ===
 async def async_get_fhs_report_internal(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
     return generate_fhs_report(transactions)
 
@@ -363,7 +356,6 @@ async def simulate_user_question(
 
         if len(transactions) < 30: 
             print(f"User {user_id} has less than 30 transactions. Switching to General Chat mode.")
-            # === 修改：这里也需要 await，因为我们之前把它改成了 async ===
             general_response = await generate_general_chat_response(user_question)
             return {
                 "simulation_report": general_response,
@@ -373,15 +365,13 @@ async def simulate_user_question(
 
         budget_analysis = analyze_recent_transactions(transactions)
         
-        # === 修改：传入异步的辅助函数 ===
-        # 使用 lambda uid: func(transactions) 来匹配 simulation.py 需要的 (uid) -> result 签名
         simulation_result = await run_simulation(
             user_id=user_id,
             user_question=user_question,
             db=db,
             fhs_report_func=lambda uid: async_get_fhs_report_internal(transactions),
             lstm_report_func=lambda uid: async_get_lstm_forecast_internal(transactions),
-            get_balance_func=get_total_current_balance, # 这是一个 async 函数
+            get_balance_func=get_total_current_balance, 
             budget_analysis=budget_analysis 
         )
         
@@ -391,7 +381,7 @@ async def simulate_user_question(
         raise
     except Exception as e:
         print(f"Simulation endpoint failed: {e}")
-        traceback.print_exc() # 打印完整堆栈
+        traceback.print_exc() 
         return {
              "simulation_report": "I encountered a technical issue. Please try again.",
              "error_debug": str(e)
@@ -435,7 +425,6 @@ async def generate_one_tap_budget(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
                                 detail="Requires at least 90 days of transaction history to generate a smart budget.")
         
-        # 这里的 generate_fhs_report 是同步的，直接调用即可
         fhs_report = generate_fhs_report(transactions)
         lstm_report = generate_lstm_forecast(transactions)
         
@@ -494,7 +483,6 @@ async def get_transactions(
         transactions = []
         for doc in docs:
             data = doc.to_dict()
-            # 确保 ID 存在
             transactions.append(TransactionDB(id=doc.id, **data))
             
         return transactions
@@ -503,7 +491,6 @@ async def get_transactions(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
         
-# 1. 删除交易
 @app.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_transaction(
     transaction_id: str,
@@ -523,18 +510,13 @@ async def delete_transaction(
             
         transaction_data = doc.to_dict()
         
-        # 权限检查
         if transaction_data.get('user_id') != user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
             
-        # 删除前回滚余额 (删除收入 = 减少余额，删除支出 = 增加余额)
-        # 注意：update_account_balance 的第三个参数 is_income。
-        # 如果删除的是收入，is_income应为 False (以此来扣除金额)
         is_income = transaction_data.get('type') == 'Income'
         account_id = transaction_data.get('account_id')
         
         if account_id:
-            # 传入 !is_income 以进行逆向操作
             update_account_balance(account_id, transaction_data.get('amount', 0), not is_income, db)
             
         doc_ref.delete()
@@ -547,11 +529,10 @@ async def delete_transaction(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-# 2. 更新交易
 @app.put("/transactions/{transaction_id}", response_model=TransactionDB)
 async def update_transaction(
     transaction_id: str,
-    transaction_update: Transaction, # 使用 Transaction 模型接收更新数据
+    transaction_update: Transaction, 
     user_id: Annotated[str, Depends(get_current_user_id)]
 ):
     """Updates a transaction and adjusts account balance."""
@@ -571,7 +552,6 @@ async def update_transaction(
         if old_data.get('user_id') != user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
             
-        # 1. 回滚旧余额
         old_is_income = old_data.get('type') == 'Income'
         old_account_id = old_data.get('account_id')
         old_amount = old_data.get('amount', 0)
@@ -579,18 +559,15 @@ async def update_transaction(
         if old_account_id:
              update_account_balance(old_account_id, old_amount, not old_is_income, db)
              
-        # 2. 更新数据
         new_data = transaction_update.model_dump()
         new_data['user_id'] = user_id
         new_data['transaction_date'] = transaction_update.transaction_date.isoformat()
         
-        # 保留原有的创建时间，或者更新
         if not new_data.get('transaction_time'):
              new_data['transaction_time'] = old_data.get('transaction_time', "00:00")
              
         doc_ref.set(new_data)
         
-        # 3. 应用新余额
         new_is_income = transaction_update.type == 'Income'
         new_account_id = transaction_update.account_id
         new_amount = transaction_update.amount

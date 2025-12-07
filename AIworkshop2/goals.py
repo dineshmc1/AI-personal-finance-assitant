@@ -9,7 +9,6 @@ from auth_deps import get_current_user_id
 from datetime import date, timedelta
 import math
 from google.cloud.firestore import FieldFilter
-# === 1. 导入账户余额更新函数 ===
 from accounts import update_account_balance
 from models import TransactionDB
 from datetime import datetime
@@ -29,7 +28,6 @@ def get_db():
         print(f"Database connection error: {e}")
         return None
 
-# === 2. 新增辅助函数：获取用户的默认账户 ID ===
 def get_user_default_account_id(user_id: str, db) -> str:
     """
     Helper to find the first account for a user to refund money to.
@@ -41,18 +39,14 @@ def get_user_default_account_id(user_id: str, db) -> str:
         return doc.id
     return None
 
-# === 修改：支持周/月日期计算 ===
 def get_calculation_dates(period: str = "Monthly") -> tuple[date, date, int]:
     """Returns today, start of period, and days remaining."""
     today = date.today()
     
     if period == "Weekly":
-        # 找到本周一 (Monday is 0, Sunday is 6)
         start_date = today - timedelta(days=today.weekday())
-        # 找到本周日
         end_date = start_date + timedelta(days=6)
     else:
-        # 默认为 Monthly
         start_date = date(today.year, today.month, 1)
         if today.month == 12:
             end_date = date(today.year + 1, 1, 1) - timedelta(days=1)
@@ -87,11 +81,9 @@ def calculate_goal_metrics(goal: GoalDB) -> GoalCalculated:
         monthly_investment_required=round(daily_required * (365.25 / 12), 2)
     )
 
-# === 修改：根据 period 计算预算 ===
 def calculate_budget_metrics(budget: BudgetDB, user_id: str, db) -> BudgetCalculated:
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
-    # 获取对应周期的日期范围
     today, start_date, days_remaining = get_calculation_dates(budget.period)
 
     transactions_ref = (db.collection('transactions')
@@ -112,7 +104,7 @@ def calculate_budget_metrics(budget: BudgetDB, user_id: str, db) -> BudgetCalcul
     if remaining_budget <= 0:
         daily_limit = 0.0
     elif days_remaining <= 0:
-        daily_limit = remaining_budget # 今天是最后一天，剩多少就能花多少
+        daily_limit = remaining_budget 
     else:
         daily_limit = remaining_budget / days_remaining
 
@@ -212,31 +204,26 @@ async def delete_goal(
         if goal_data.get('user_id') != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
             
-        # 1. 获取当前已存金额
         amount_to_refund = goal_data.get('current_saved', 0.0)
         goal_name = goal_data.get('name', 'Unknown Goal')
         
-        # 2. 如果有余额，找到默认账户并返还 + 记录交易
         if amount_to_refund > 0:
             default_account_id = get_user_default_account_id(user_id, db)
             if default_account_id:
-                # 2.1 更新余额
                 update_account_balance(default_account_id, amount_to_refund, True, db)
                 
-                # 2.2 === 新增：创建一条退款交易记录 ===
                 refund_transaction = {
                     "user_id": user_id,
                     "account_id": default_account_id,
                     "type": "Income",
                     "amount": amount_to_refund,
-                    "category": "Savings", # 或者 "Other"
+                    "category": "Savings", 
                     "merchant": f"Refund: {goal_name}",
                     "transaction_date": date.today().isoformat(),
                     "transaction_time": datetime.now().strftime("%H:%M")
                 }
                 db.collection('transactions').add(refund_transaction)
         
-        # 3. 删除目标
         goal_ref.delete()
         return
     except HTTPException:
@@ -245,7 +232,6 @@ async def delete_goal(
         print(f"Error deleting goal: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete goal.")
 
-# === Budget 接口更新 ===
 @goals_router.post("/budget", response_model=BudgetDB, status_code=status.HTTP_201_CREATED)
 async def create_budget(budget_data: BudgetCreate, user_id: Annotated[str, Depends(get_current_user_id)]):
     db = get_db()
@@ -277,7 +263,6 @@ async def list_budgets(user_id: Annotated[str, Depends(get_current_user_id)]):
         raise HTTPException(status_code=500, detail="Failed to retrieve budgets.")
     
 
-# === 新增：删除预算接口 ===
 @goals_router.delete("/budget/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_budget(
     budget_id: str,
@@ -305,44 +290,6 @@ async def delete_budget(
         print(f"Error deleting budget: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete budget.")
     
-
-# @goals_router.put("/budget/{budget_id}")
-# async def update_budget(
-#     budget_id: str,
-#     budget_data: BudgetCreate,
-#     user_id: Annotated[str, Depends(get_current_user_id)]
-# ):
-#     db = get_db()
-#     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
-    
-#     try:
-#         budget_ref = db.collection('budgets').document(budget_id)
-#         budget_doc = budget_ref.get()
-        
-#         if not budget_doc.exists:
-#             raise HTTPException(status_code=404, detail="Budget not found")
-            
-#         if budget_doc.to_dict().get('user_id') != user_id:
-#             raise HTTPException(status_code=403, detail="Not authorized")
-        
-#         # 更新数据 (通常不建议修改 category 以免重复，但这里允许更新金额和周期)
-#         update_payload = {
-#             "limit_amount": budget_data.limit_amount,
-#             "period": budget_data.period,
-#             # 如果你也想允许修改分类名，取消下面这行的注释，但在前端最好设为只读
-#             # "category": budget_data.category 
-#         }
-        
-#         budget_ref.update(update_payload)
-#         return {"message": "Budget updated successfully"}
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         print(f"Error updating budget: {e}")
-#         raise HTTPException(status_code=500, detail="Failed to update budget.")
-    
-    # === 新增：更新预算接口 ===
 @goals_router.put("/budget/{budget_id}")
 async def update_budget(
     budget_id: str,
@@ -362,11 +309,10 @@ async def update_budget(
         if budget_doc.to_dict().get('user_id') != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
         
-        # 只更新金额和周期，通常不建议修改分类名称，以免导致数据不一致
         update_payload = {
             "limit_amount": budget_data.limit_amount,
             "period": budget_data.period,
-            "name": f"{budget_data.category} Budget" # 保持名称同步
+            "name": f"{budget_data.category} Budget" 
         }
         
         budget_ref.update(update_payload)

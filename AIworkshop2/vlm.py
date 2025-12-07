@@ -6,19 +6,16 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any, Literal
 from pydantic import BaseModel, Field
-from pdf2image import convert_from_path # 需要安装 poppler
+from pdf2image import convert_from_path
 import tempfile
 import asyncio 
 from dotenv import load_dotenv
 
-# Load .env
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_URL = os.getenv("OPENAI_API_URL")
 
-# === 修复: 确保 URL 指向 chat/completions ===
-# 如果 .env 里只有 /v1，我们需要手动补全路径
 if OPENAI_API_URL and not OPENAI_API_URL.endswith("/chat/completions"):
     CHAT_API_URL = f"{OPENAI_API_URL.rstrip('/')}/chat/completions"
 else:
@@ -27,7 +24,6 @@ else:
 MODEL = "gpt-4o-mini" 
 
 VLM_TransactionType = Literal["Income", "Expense"]
-# 这里的 Category 需要和前端/数据库保持一致，否则 Pydantic 校验会失败
 VLM_TransactionCategory = Literal[
     "Food", "Transportation", "Housing", "Shopping", "Vehicle",
     "Investments", "Financial Expenses", "Entertainment", "Other", "Salary"
@@ -39,7 +35,6 @@ class VLMTransaction(BaseModel):
     amount: float
     category: VLM_TransactionCategory
     merchant: str = Field(..., description="Name of the merchant or source.")
-    # balance 字段有时候票据上没有，AI 可能会瞎编或者报错，如果是必须字段请保留，否则建议 Optional
     balance: float = Field(0.0) 
 
 class VLMResponse(BaseModel):
@@ -64,7 +59,6 @@ def auto_classify(tx: dict) -> dict:
     category = tx.get("category", "")
 
     income_keywords = ["salary", "deposit", "transfer in", "received", "bonus"]
-    # 简单的逻辑增强
     if amount > 0 and any(k in merchant for k in income_keywords):
         tx["type"] = "Income"
     
@@ -100,7 +94,7 @@ async def extract_transactions_from_image(data_url: str) -> List[Dict[str, Any]]
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": [
             {"type": "text", "text": "Extract all transactions from this document. Respond with JSON ONLY."},
-            {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}} # 建议用 high detail 识别文字更准
+            {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}} 
         ]}
     ]
 
@@ -119,15 +113,11 @@ async def extract_transactions_from_image(data_url: str) -> List[Dict[str, Any]]
     for attempt in range(3):
         try:
             print(f"Requesting OpenAI VLM... Attempt {attempt+1}")
-            # === 使用修正后的 CHAT_API_URL ===
-            # 这里虽然是 requests (同步)，但在外层 async 函数中运行
             response = requests.post(CHAT_API_URL, headers=headers, data=json.dumps(payload), timeout=30)
             response.raise_for_status()
 
             result = response.json()
             json_text = result["choices"][0]["message"]["content"]
-            
-            # print(f"DEBUG JSON: {json_text}") # 调试用
 
             parsed = VLMResponse.model_validate_json(json_text)
             final_list = []
@@ -148,7 +138,6 @@ async def extract_transactions_from_image(data_url: str) -> List[Dict[str, Any]]
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             print(f"Parsing Error: {e}")
-            # 如果解析失败，通常重试也没用，直接返回空或继续
             return []
 
     return []
@@ -162,16 +151,13 @@ async def extract_transactions_from_data(base64_data: str, mime_type: str) -> Li
     tmp_path = None
 
     try:
-        # 创建临时文件
         suffix = ".pdf" if mime_type == "application/pdf" else ".jpg"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(base64.b64decode(base64_data))
             tmp_path = tmp.name
 
         if mime_type == "application/pdf":
-            # PDF 处理：转为图片
             try:
-                # 注意：Windows 上需要 poppler 路径，Linux/Mac 通常不需要
                 pages = convert_from_path(tmp_path, dpi=300)
             except Exception as e:
                 print(f"PDF Conversion failed (Poppler installed?): {e}")
@@ -183,7 +169,6 @@ async def extract_transactions_from_data(base64_data: str, mime_type: str) -> Li
 
                 data_url = encode_image_to_data_url(img_path)
                 
-                # 必须 await
                 txs = await extract_transactions_from_image(data_url)
                 transactions.extend(txs)
 
@@ -191,21 +176,18 @@ async def extract_transactions_from_data(base64_data: str, mime_type: str) -> Li
                     os.remove(img_path)
 
         else:
-            # 图片直接处理
             data_url = encode_image_to_data_url(tmp_path)
             transactions = await extract_transactions_from_image(data_url)
 
     except Exception as e:
         print(f"Error during file processing: {e}")
-        # 这里可以选择 raise 抛给 main.py 处理，或者返回空列表
         return [] 
 
     finally:
-        # 清理临时文件
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
             except PermissionError:
-                pass # Windows 有时候文件锁释放慢
+                pass 
 
     return transactions

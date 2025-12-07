@@ -56,14 +56,12 @@ export default function HomeScreen() {
         .map(c => c.name);
   }, [categories, editingTransaction]);
 
-  // === 3. Calculate Totals based on current MONTH (修复版) ===
+  // === 3. Calculate Totals based on current MONTH  ===
   const currentMonthTransactions = useMemo(() => {
     if (!transactions) return [];
     
     return transactions.filter(t => {
       if (!t.date) return false;
-      
-      // t.date 是 Date 对象，直接比较 Month 和 Year
       return t.date.getMonth() === selectedDate.getMonth() &&
              t.date.getFullYear() === selectedDate.getFullYear();
     });

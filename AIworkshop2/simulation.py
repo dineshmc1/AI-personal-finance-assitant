@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
 
-# 1. 引入 AsyncOpenAI 以支持异步非阻塞调用
 from openai import AsyncOpenAI 
 
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +18,10 @@ OPENAI_API_URL = os.getenv("OPENAI_API_URL")
 if not OPENAI_API_KEY:
     print("Warning: OPENAI_API_KEY missing!")
 
-# 2. 初始化异步客户端
 client_kwargs = {"api_key": OPENAI_API_KEY}
 if OPENAI_API_URL:
     client_kwargs["base_url"] = OPENAI_API_URL
 
-# 使用 AsyncOpenAI
 openai_client = AsyncOpenAI(**client_kwargs)
 
 MODEL_MINI = "gpt-4o-mini" 
@@ -59,7 +56,6 @@ def clean_json_response(content: str) -> str:
         content = content[:-3]
     return content.strip()
 
-# 3. 改为 async def 并使用 await
 async def extract_simulation_parameters(user_question: str) -> Dict[str, Any]:
     if not openai_client:
         raise HTTPException(status_code=503, detail="OpenAI service not configured.")
@@ -67,7 +63,6 @@ async def extract_simulation_parameters(user_question: str) -> Dict[str, Any]:
     prompt = f"Analyze user question: '{user_question}'. Extract financial simulation parameters."
 
     try:
-        # 使用 await 调用异步 API
         response = await openai_client.chat.completions.create(
             model=MODEL_MINI,
             messages=[
@@ -170,7 +165,6 @@ def run_financial_simulation(
         "daily_fhs": [round(f, 2) for f in fhs_scores[::30]] 
     }
 
-# 4. 改为 async def 并修复 JSON 序列化
 async def generate_detailed_report(
     user_question: str, 
     simulation_data: Dict[str, Any], 
@@ -179,9 +173,7 @@ async def generate_detailed_report(
 ) -> str:
     if not openai_client:
         return "OpenAI unavailable."
-    
-    # 🔴 修正这里：添加 default=str 参数
-    # 这告诉 Python：遇到日期格式，直接把它转成字符串，不要报错
+
     data_str = json.dumps(simulation_data, indent=2, default=str)
     budget_str = json.dumps(budget_analysis, indent=2, default=str) if budget_analysis else "Not available"
     
@@ -221,11 +213,9 @@ async def generate_simulation_report(
         raise HTTPException(status_code=500, detail="OpenAI API Key missing.")
 
     try:
-        # await 异步函数
         params = await extract_simulation_parameters(user_question)
         logging.info(f"Extracted parameters: {params}")
         
-        # 并行获取数据 (Optional Optimization: using asyncio.gather)
         fhs_report = await fhs_report_func(user_id)
         lstm_report = await lstm_report_func(user_id)
         initial_balance = await get_balance_func(user_id, db)
@@ -234,7 +224,6 @@ async def generate_simulation_report(
             err = fhs_report.get("error") or lstm_report.get("error")
             raise HTTPException(status_code=400, detail=f"Analysis failed: {err}")
 
-        # 运行纯数学计算 (同步)
         simulation_data = run_financial_simulation(
             params, fhs_report, lstm_report, initial_balance
         )
@@ -244,7 +233,6 @@ async def generate_simulation_report(
         
         initial_fhs_rating = fhs_report.get('summary', {}).get('latest_rating', 'Unknown')
         
-        # await 异步报告生成
         final_report_markdown = await generate_detailed_report(
             user_question, 
             simulation_data,
@@ -265,7 +253,6 @@ async def generate_simulation_report(
         logging.error(f"Simulation Orchestration Failed: {e}")
         raise HTTPException(status_code=500, detail=f"Simulation error: {str(e)}")
 
-# 5. 改为 async def
 async def generate_general_chat_response(user_question: str) -> str:
     if not openai_client:
         return "OpenAI service is not configured."

@@ -17,13 +17,12 @@ import { useNavigation } from "@react-navigation/native";
 
 export default function AddTransactionScreen() {
   const { colors } = useTheme();
-  // === 修改 1: 从 Context 获取真实的 categories 和 全局的 getCategoryIcon ===
   const { addTransaction, categories, getCategoryIcon } = useTransactions();
   const navigation = useNavigation();
   
   const [isSaving, setIsSaving] = useState(false);
   const [transaction, setTransaction] = useState({
-    type: 'expend', // 注意：后端通常用 'Expense'，前端这里用 'expend' 对应 UI 逻辑，提交时需转换
+    type: 'expend', 
     amount: '',
     category: '',
     description: '',
@@ -31,14 +30,11 @@ export default function AddTransactionScreen() {
     time: new Date().toTimeString().split(' ')[0].substring(0, 5)
   });
 
-  // === 修改 2: 根据当前选择的 type (income/expend) 动态过滤分类 ===
-  // 后端存的是 'Expense'/'Income' (大写开头)，前端 UI 状态是 'expend'/'income' (小写)
   const displayCategories = categories.filter(c => 
       (transaction.type === 'expend' && c.type === 'Expense') ||
       (transaction.type === 'income' && c.type === 'Income')
   );
 
-  // 如果列表为空（刚注册没网时），提供默认兜底
   const fallbackCategories = transaction.type === 'expend' 
       ? ['Food', 'Transport', 'Shopping', 'Bills'] 
       : ['Salary', 'Freelance'];
@@ -47,7 +43,6 @@ export default function AddTransactionScreen() {
       ? displayCategories.map(c => c.name) 
       : fallbackCategories;
 
-  // === 删除本地的 getCategoryIcon 函数，直接用 Context 里的 ===
 
   const handleSaveTransaction = async () => {
     if (!transaction.amount || !transaction.category) {
@@ -63,8 +58,8 @@ export default function AddTransactionScreen() {
         amount: parseFloat(transaction.amount),
         date: new Date(transaction.date),
         time: transaction.time,
-        description: transaction.description || transaction.category, // 描述为空则用分类名
-        icon: getCategoryIcon(transaction.category) // 使用 Context 函数
+        description: transaction.description || transaction.category, 
+        icon: getCategoryIcon(transaction.category) 
       };
 
       await addTransaction(newTransaction);
@@ -191,7 +186,7 @@ export default function AddTransactionScreen() {
                 onPress={() => setTransaction({...transaction, category: catName})}
               >
                 <MaterialCommunityIcons 
-                  name={getCategoryIcon(catName)} // 使用 Context 函数获取正确图标
+                  name={getCategoryIcon(catName)} 
                   size={16} 
                   color={transaction.category === catName ? colors.surface : colors.primary} 
                 />

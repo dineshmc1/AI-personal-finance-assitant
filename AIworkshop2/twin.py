@@ -4,6 +4,7 @@ from typing import Annotated, List, Dict, Any
 from firebase_admin import firestore
 from datetime import date, datetime
 import uuid
+from google.cloud.firestore import FieldFilter 
 
 from auth_deps import get_current_user_id
 from models import (
@@ -21,7 +22,6 @@ XP_BEAT_EASY = 100
 XP_BEAT_MEDIUM = 300
 XP_BEAT_HARD = 500
 
-# === 修改：更稳健的 get_db 函数 ===
 def get_db():
     try:
         return firestore.client()
@@ -50,7 +50,7 @@ def get_or_create_profile(user_id: str, db) -> GamificationProfile:
             xp_to_next_level=data.get('xp_to_next_level', 1000),
             total_battles_won=data.get('total_battles_won', 0),
             badges=badges,
-            last_claimed_month=data.get('last_claimed_month') # 读取上次领奖时间
+            last_claimed_month=data.get('last_claimed_month') 
         )
     else:
         new_profile = GamificationProfile(user_id=user_id)
@@ -180,7 +180,7 @@ async def get_twin_dashboard(
     """
     Get the gamified dashboard comparing User vs Twins for the current month.
     """
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
     
@@ -188,8 +188,8 @@ async def get_twin_dashboard(
     start_date = date(today.year, today.month, 1).isoformat()
     
     transactions_ref = db.collection('transactions')\
-        .where("user_id", "==", user_id)\
-        .where("transaction_date", ">=", start_date)
+        .where(filter=FieldFilter("user_id", "==", user_id))\
+        .where(filter=FieldFilter("transaction_date", ">=", start_date))
         
     docs = transactions_ref.stream()
     
@@ -236,31 +236,26 @@ async def claim_monthly_xp(
     Call this at the end of the month (or manually) to claim XP based on performance.
     Prevents claiming multiple times per month and claiming too early.
     """
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
     
     today = date.today()
     current_month_str = today.strftime("%Y-%m")
     
-    # === 修复漏洞 1：限制只能在月底 (例如 25号之后) 领奖 ===
-    # 为了测试方便，你可以暂时注释掉这行，或者把 25 改成 1
     if today.day < 25:
         raise HTTPException(status_code=400, detail="It's too early! Come back after the 25th to claim your monthly rewards.")
 
-    # 获取用户 Profile
     profile = get_or_create_profile(user_id, db)
 
-    # === 修复漏洞 2：检查本月是否已领奖 ===
     if profile.last_claimed_month == current_month_str:
         raise HTTPException(status_code=400, detail="You have already claimed XP for this month!")
     
-    # 开始计算 XP
     start_date = date(today.year, today.month, 1).isoformat()
     
     transactions_ref = db.collection('transactions')\
-        .where("user_id", "==", user_id)\
-        .where("transaction_date", ">=", start_date)
+        .where(filter=FieldFilter("user_id", "==", user_id))\
+        .where(filter=FieldFilter("transaction_date", ">=", start_date))
     docs = transactions_ref.stream()
     
     total_income = 0.0
@@ -297,15 +292,12 @@ async def claim_monthly_xp(
     if xp_gained == 0:
         return {"message": "Keep trying! No XP gained this time.", "xp_gained": 0}
 
-    # 更新 Profile
     profile.current_xp += xp_gained
     profile.total_battles_won += 1
     profile.badges.extend(badges_earned)
     
-    # === 关键：记录本月已领 ===
     profile.last_claimed_month = current_month_str 
     
-    # 升级逻辑
     new_level, next_xp = calculate_level(profile.current_xp)
     profile.level = new_level
     profile.xp_to_next_level = next_xp

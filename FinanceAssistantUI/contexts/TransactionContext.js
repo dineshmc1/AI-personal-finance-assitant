@@ -13,15 +13,12 @@ export const useTransactions = () => {
   return context;
 };
 
-// Helper: Get Icon (动态获取图标，支持自定义分类)
 const getCategoryIcon = (categoryName, categoriesList = []) => {
-  // 1. 尝试从自定义分类列表找
   if (categoriesList && categoriesList.length > 0) {
       const cat = categoriesList.find(c => c.name === categoryName);
       if (cat && cat.icon) return cat.icon;
   }
   
-  // 2. 默认映射
   const icons = {
     'Food': 'food', 'Transport': 'car', 'Shopping': 'cart', 'Bills': 'file-document',
     'Entertainment': 'movie', 'Healthcare': 'hospital', 'Education': 'school',
@@ -32,7 +29,6 @@ const getCategoryIcon = (categoryName, categoriesList = []) => {
   return icons[categoryName] || 'tag';
 };
 
-// Helper: Get Color (动态获取颜色)
 const getCategoryColor = (categoryName, categoriesList = []) => {
   if (categoriesList && categoriesList.length > 0) {
       const cat = categoriesList.find(c => c.name === categoryName);
@@ -58,7 +54,6 @@ export const TransactionProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState({});
 
-  // === 1. 初始化加载 ===
   useEffect(() => {
     if (isAuthenticated && idToken) {
       setAuthToken(idToken);
@@ -79,7 +74,6 @@ export const TransactionProvider = ({ children }) => {
     }
   }, [isAuthenticated, idToken]); 
 
-  // === 2. API Actions ===
 
   // --- Accounts ---
   const loadAccounts = async () => {
@@ -214,7 +208,6 @@ export const TransactionProvider = ({ children }) => {
         };
         setTransactions(prev => [newTransaction, ...prev]);
         
-        // 刷新预算状态
         if (transaction.type === 'expend') await loadBudgets();
       }
     } catch (error) {
@@ -290,7 +283,7 @@ export const TransactionProvider = ({ children }) => {
           time: new Date().toTimeString().substring(0, 5)
         }));
         setTransactions(prev => [...formattedTransactions, ...prev]);
-        await loadBudgets(); // 刷新预算
+        await loadBudgets(); 
         return formattedTransactions.length;
       }
       return 0;
@@ -302,12 +295,9 @@ export const TransactionProvider = ({ children }) => {
     }
   };
 
-  // === 新增：加载日历事件 ===
   const loadCalendarEvents = async () => {
     try {
       const today = new Date();
-      // 获取当前月份的日历数据
-      // 注意：这里的 API 路径对应后端 calendar_router 的 /report
       const data = await apiRequest(`/calendar/report?month=${today.getMonth() + 1}&year=${today.getFullYear()}`);
       if (data) {
         setCalendarEvents(data);
@@ -434,17 +424,15 @@ export const TransactionProvider = ({ children }) => {
         const formattedBudgets = data.map(b => ({
             id: b.id,
             category: b.category,
-            // 适配新字段名
             allocated: b.limit_amount, 
-            period: b.period || 'Monthly', // 默认值
+            period: b.period || 'Monthly', 
             spent: b.current_spending,
             remaining: b.remaining_budget,
             color: getCategoryColor(b.category, categories),
-            // 这里计算 Weekly Safe Limit: 如果是 Monthly，则 daily * 7；如果是 Weekly，直接用 remaining
             weeklySafeLimit: (b.period === 'Weekly') 
                 ? Math.max(0, b.remaining_budget) 
                 : Math.max(0, b.daily_spending_limit * 7),
-            dailyLimit: b.daily_spending_limit // 保留原有的
+            dailyLimit: b.daily_spending_limit 
         }));
         setBudgets(formattedBudgets);
       }
@@ -458,7 +446,6 @@ export const TransactionProvider = ({ children }) => {
         const payload = {
             name: newBudget.category + " Budget",
             category: newBudget.category,
-            // 发送新字段
             limit_amount: parseFloat(newBudget.allocated),
             period: newBudget.period // "Monthly" or "Weekly"
         };
@@ -492,7 +479,6 @@ export const TransactionProvider = ({ children }) => {
                 body: JSON.stringify(payload)
             });
 
-            // 更新成功后重新加载预算，以重新计算剩余金额和进度
             await loadBudgets();
             return true;
         } catch (error) {
@@ -505,7 +491,6 @@ export const TransactionProvider = ({ children }) => {
   const deleteBudget = async (budgetId) => {
       try {
           await apiRequest(`/goals/budget/${budgetId}`, { method: 'DELETE' });
-          // 本地更新
           setBudgets(prev => prev.filter(b => b.id !== budgetId));
           return true;
       } catch (error) {

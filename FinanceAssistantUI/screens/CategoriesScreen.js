@@ -17,7 +17,6 @@ import { useTransactions } from "../contexts/TransactionContext";
 export default function CategoriesScreen() {
   const { colors } = useTheme();
   
-  // === 1. 使用 Context 数据 ===
   const { 
     categories: allCategories, 
     addCategory: addCategoryContext, 
@@ -30,7 +29,6 @@ export default function CategoriesScreen() {
   const [newCategory, setNewCategory] = useState({ name: "", type: "expense", icon: "tag" });
   const [refreshing, setRefreshing] = useState(false);
 
-  // 每次进入页面刷新分类
   useEffect(() => {
     loadCategories();
   }, []);
@@ -41,13 +39,11 @@ export default function CategoriesScreen() {
     setRefreshing(false);
   };
 
-  // 过滤当前 Tab 的分类 (注意后端返回的是 Expense/Income 首字母大写，前端状态是小写，需匹配)
   const currentCategories = allCategories.filter(c => 
       (activeTab === 'expense' && c.type === 'Expense') || 
       (activeTab === 'income' && c.type === 'Income')
   );
 
-  // 添加分类
   const handleAddCategory = async () => {
     if (!newCategory.name) {
       Alert.alert("Error", "Please enter a category name");
@@ -57,9 +53,9 @@ export default function CategoriesScreen() {
     try {
         await addCategoryContext({
             name: newCategory.name,
-            type: newCategory.type, // "expense" or "income"
+            type: newCategory.type, 
             icon: newCategory.icon,
-            color: "#" + Math.floor(Math.random()*16777215).toString(16) // 随机颜色
+            color: "#" + Math.floor(Math.random()*16777215).toString(16) 
         });
         
         Alert.alert("Success", "Category added!");
@@ -70,10 +66,7 @@ export default function CategoriesScreen() {
     }
   };
 
-  // 删除分类 (长按触发)
   const handleDeleteCategory = (category) => {
-    // 如果是默认分类，后端会拒绝删除，前端也可以先拦截一下
-    // 但为了简单，我们直接调用后端，让后端判断（或者你可以检查 category.is_default 字段如果后端返回了的话）
     
     Alert.alert(
       "Delete Category",
@@ -86,7 +79,6 @@ export default function CategoriesScreen() {
           onPress: async () => {
             try {
               await deleteCategoryContext(category.id);
-              // Context会自动更新UI
             } catch (error) {
               Alert.alert("Cannot Delete", "Default categories cannot be deleted.");
             }
@@ -152,7 +144,6 @@ export default function CategoriesScreen() {
             </View>
             <Text style={[styles.categoryName, { color: colors.onSurface }]}>{category.name}</Text>
             
-            {/* 如果有 is_default 字段，可以在这里显示锁图标，或者只给自定义的显示删除提示 */}
           </TouchableOpacity>
         ))}
         

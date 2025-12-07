@@ -54,7 +54,7 @@ async def list_accounts(
     """
     Retrieves all accounts for the authenticated user.
     """
-    db = get_db() # <--- 在函数内部获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 

@@ -17,14 +17,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTransactions } from "../contexts/TransactionContext";
 import ProgressBar from "../components/ProgressBar";
 import SummaryCard from "../components/SummaryCard";
-// 引入 API 请求
 import { apiRequest } from "../services/apiClient";
 
 const { width, height } = Dimensions.get('window');
 
 export default function DashboardScreen({ navigation }) {
   const { colors } = useTheme();
-  // 1. 引入 calendarEvents 和 loadCalendarEvents
   const { 
     transactions, 
     budgets = [], 
@@ -41,8 +39,6 @@ export default function DashboardScreen({ navigation }) {
   
   // === Twin Data State ===
   const [twinData, setTwinData] = useState(null);
-
-  // 加载 Twin 数据
   const loadTwinData = async () => {
     try {
       const data = await apiRequest('/twin/dashboard');
@@ -50,13 +46,11 @@ export default function DashboardScreen({ navigation }) {
     } catch (e) { console.log("Twin Load Error:", e); }
   };
 
-  // 初始化加载所有数据
   useEffect(() => {
     loadCalendarEvents();
     loadTwinData();
   }, []);
 
-  // === 计算即将到期的账单 (未来 7 天) ===
   const upcomingBills = useMemo(() => {
     if (!calendarEvents || Object.keys(calendarEvents).length === 0) return [];
 
@@ -68,16 +62,12 @@ export default function DashboardScreen({ navigation }) {
 
     const bills = [];
 
-    // 遍历日历对象 (Key 是日期字符串 "YYYY-MM-DD")
     Object.keys(calendarEvents).forEach(dateStr => {
       const eventDate = new Date(dateStr);
-      // 只关心今天及未来7天内的
       if (eventDate >= today && eventDate <= nextWeek) {
         const dayEvents = calendarEvents[dateStr];
         dayEvents.forEach(event => {
-          // 只显示 "Bill Due" 或 "User Bill" 类型的支出
           if (event.type === 'Bill Due' || event.type === 'User Bill') {
-            // 计算还有几天
             const diffTime = Math.abs(eventDate - today);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
             
@@ -92,7 +82,6 @@ export default function DashboardScreen({ navigation }) {
       }
     });
 
-    // 按日期排序，只取前3个
     return bills.sort((a, b) => a.date - b.date).slice(0, 3); 
   }, [calendarEvents]);
 
@@ -207,14 +196,13 @@ export default function DashboardScreen({ navigation }) {
     await Promise.all([
         loadTransactions(), 
         loadBudgets(),
-        loadCalendarEvents(), // 刷新日历
-        loadTwinData()        // 刷新 Twin 数据
+        loadCalendarEvents(), 
+        loadTwinData()        
     ]);
     setRefreshing(false);
   };
 
   const getCategoryIcon = (category) => {
-    // 简单映射，你可以复用 Context 里的 getIconForCategory
     return 'cash'; 
   };
 
@@ -435,7 +423,7 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* === 新增：Twin Battle Card === */}
+        {/* === Twin Battle Card === */}
         {twinData && (
           <TouchableOpacity 
             style={[styles.section, { padding: 0, overflow: 'hidden' }]} 
@@ -468,7 +456,7 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* === Upcoming Bills Section (空状态也显示) === */}
+        {/* === Upcoming Bills Section === */}
         <View style={[styles.section, { backgroundColor: colors.surface }]}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
@@ -833,7 +821,7 @@ const styles = StyleSheet.create({
   legendPercentage: { fontSize: 12, opacity: 0.7, marginTop: 2 },
   modalBottomPadding: { height: 20 },
   
-  // === 新增：Bill Item 样式 ===
+  // === Bill Item  ===
   billItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import ProgressBar from "../components/ProgressBar"; // 确保你有一个 ProgressBar 组件
+import ProgressBar from "../components/ProgressBar"; 
 import { useTransactions } from "../contexts/TransactionContext";
 import { apiRequest } from '../services/apiClient';
 
@@ -23,7 +23,7 @@ export default function BudgetScreen() {
   const { 
     budgets, 
     addBudget, 
-    updateBudget, // 确保 Context 中有这个函数
+    updateBudget, 
     loadBudgets, 
     deleteBudget, 
     categories 
@@ -35,31 +35,26 @@ export default function BudgetScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
-  // 初始化加载
   useEffect(() => {
     loadBudgets();
   }, []);
 
-  // 下拉刷新
   const onRefresh = async () => {
     setRefreshing(true);
     await loadBudgets();
     setRefreshing(false);
   };
 
-  // 计算总预算情况
   const totalAllocated = budgets.reduce((sum, b) => sum + (b.allocated || 0), 0);
   const totalSpent = budgets.reduce((sum, b) => sum + (b.spent || 0), 0);
   const totalRemaining = totalAllocated - totalSpent;
 
-  // === 打开新增窗口 ===
   const openAddModal = () => {
       setEditingId(null);
       setNewBudget({ category: "", allocated: "", period: "Monthly" });
       setShowModal(true);
   };
 
-  // === 打开编辑窗口 ===
   const openEditModal = (budget) => {
       setEditingId(budget.id);
       setNewBudget({
@@ -70,7 +65,6 @@ export default function BudgetScreen() {
       setShowModal(true);
   };
 
-  // === AI 自动填充逻辑 ===
   const handleAutoFill = async () => {
     if (!newBudget.category) {
       Alert.alert("Select Category", "Please select a category first so AI can analyze it.");
@@ -99,7 +93,6 @@ export default function BudgetScreen() {
     }
   };
 
-  // === 提交逻辑 (新增 或 修改) ===
   const handleSubmit = async () => {
     if (!newBudget.category || !newBudget.allocated) {
       Alert.alert("Error", "Please select a category and enter amount");
@@ -108,9 +101,8 @@ export default function BudgetScreen() {
 
     try {
       if (editingId) {
-          // --- Update Mode ---
           await updateBudget(editingId, {
-              category: newBudget.category, // 后端通常不修改分类，但传过去保持一致
+              category: newBudget.category, 
               allocated: newBudget.allocated,
               period: newBudget.period
           });
@@ -138,7 +130,6 @@ export default function BudgetScreen() {
     }
   };
 
-  // === 删除逻辑 ===
   const handleDeleteBudget = (budget) => {
     Alert.alert(
       "Delete Budget",
@@ -160,7 +151,6 @@ export default function BudgetScreen() {
     );
   };
 
-  // 获取支出分类列表
   const expenseCategories = categories.filter(c => c.type === 'Expense').map(c => c.name);
   const availableCategories = expenseCategories.length > 0 ? expenseCategories : ["Food", "Transport", "Shopping", "Bills", "Entertainment"];
 
@@ -172,7 +162,6 @@ export default function BudgetScreen() {
       >
         <Text style={[styles.title, { color: colors.primary }]}>Budget Management</Text>
 
-        {/* 1. 总预算摘要卡片 */}
         <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -194,13 +183,11 @@ export default function BudgetScreen() {
           </View>
         </View>
 
-        {/* 2. 预算列表 */}
         <View style={styles.budgetList}>
           {budgets.map((budget) => {
             const progress = budget.allocated > 0 ? budget.spent / budget.allocated : 0;
             const isOverBudget = budget.remaining < 0;
             
-            // 计算安全限额提示
             const safeLimitText = budget.period === 'Monthly' 
                 ? `Weekly Safe Limit: RM ${(budget.dailyLimit * 7).toFixed(0)}`
                 : `Daily Safe Limit: RM ${budget.dailyLimit.toFixed(0)}`;
@@ -209,8 +196,8 @@ export default function BudgetScreen() {
               <TouchableOpacity
                   key={budget.id} 
                   style={[styles.budgetItem, { backgroundColor: colors.surface }]}
-                  onPress={() => openEditModal(budget)} // 点击编辑
-                  onLongPress={() => handleDeleteBudget(budget)} // 长按删除
+                  onPress={() => openEditModal(budget)} 
+                  onLongPress={() => handleDeleteBudget(budget)} 
                   activeOpacity={0.7}
                   delayLongPress={500}
               >
@@ -227,7 +214,6 @@ export default function BudgetScreen() {
                   </Text>
                 </View>
                 
-                {/* 进度条 */}
                 <ProgressBar 
                   progress={Math.min(progress, 1)} 
                   color={isOverBudget ? "#F44336" : (budget.color || colors.primary)} 
@@ -255,7 +241,6 @@ export default function BudgetScreen() {
         </View>
       </ScrollView>
 
-      {/* 3. 添加按钮 (FAB) */}
       <TouchableOpacity 
         style={[styles.addButton, { backgroundColor: colors.primary }]}
         onPress={openAddModal}
@@ -264,7 +249,6 @@ export default function BudgetScreen() {
         <Text style={[styles.addButtonText, { color: colors.surface }]}>Create Budget</Text>
       </TouchableOpacity>
 
-      {/* 4. 新增/编辑 模态框 */}
       <Modal
         visible={showModal}
         transparent={true}
@@ -280,7 +264,6 @@ export default function BudgetScreen() {
                 {editingId ? "Edit Budget" : "New Budget"}
             </Text>
             
-            {/* 周期选择器 */}
             <View style={styles.periodSelector}>
                 <TouchableOpacity 
                     style={[styles.periodButton, { backgroundColor: newBudget.period === 'Monthly' ? colors.primary : colors.surface }]}
@@ -296,20 +279,18 @@ export default function BudgetScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* 分类选择 (核心修复：编辑模式下锁定分类) */}
             <Text style={[styles.label, {color: colors.onSurface}]}>
                 Category {editingId ? "(Locked)" : ":"}
             </Text>
             <ScrollView horizontal style={{marginBottom: 15, maxHeight: 50}} showsHorizontalScrollIndicator={false}>
                 {availableCategories.map(cat => {
                     const isSelected = newBudget.category === cat;
-                    // 如果是编辑模式，只显示当前选中的分类，隐藏其他
                     if (editingId && !isSelected) return null;
 
                     return (
                         <TouchableOpacity 
                             key={cat} 
-                            disabled={!!editingId} // 编辑时禁用点击
+                            disabled={!!editingId} 
                             style={[
                                 styles.categoryChip, 
                                 { 
@@ -326,7 +307,6 @@ export default function BudgetScreen() {
                 })}
             </ScrollView>
             
-            {/* 金额输入 */}
             <TextInput
                 style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
                 placeholder="Limit Amount (RM)"
@@ -336,7 +316,6 @@ export default function BudgetScreen() {
                 onChangeText={(text) => setNewBudget({...newBudget, allocated: text})}
             />
 
-            {/* AI 按钮 */}
             {!editingId && (
                 <TouchableOpacity 
                     onPress={handleAutoFill} 
@@ -349,7 +328,6 @@ export default function BudgetScreen() {
                 </TouchableOpacity>
             )}
             
-            {/* 底部按钮 */}
             <View style={styles.modalButtons}>
                 <TouchableOpacity 
                 style={[styles.modalButton, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline }]}
@@ -391,8 +369,7 @@ const styles = StyleSheet.create({
   budgetDetails: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   amount: { fontSize: 12 },
   percentage: { fontSize: 12, fontWeight: "600" },
-  
-  // Floating Button
+
   addButton: { 
       position: 'absolute', 
       bottom: 20, 
@@ -406,8 +383,6 @@ const styles = StyleSheet.create({
       elevation: 5 
   },
   addButtonText: { fontSize: 16, fontWeight: "600", marginLeft: 8 },
-
-  // Modal Styles
   modalOverlay: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 },
   modalContent: { borderRadius: 15, padding: 20, elevation: 5, borderWidth: 1 },
   modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 15, textAlign: "center" },

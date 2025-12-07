@@ -1,5 +1,4 @@
 // screens/ChatScreen.js
-
 import React, { useState, useRef, useEffect } from "react";
 import { 
   View, 
@@ -33,7 +32,6 @@ export default function ChatScreen({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
   const flatListRef = useRef(null);
   
-  // === 修改部分：对应后端功能的专业问题 ===
   const suggestedQuestions = [
     { label: "📊 90-Day Analysis", query: "Analyze my income and spending over the last 90 days." },
     { label: "🔮 Future Forecast", query: "Forecast my balance and cash flow for the next 30 days." },
@@ -42,7 +40,6 @@ export default function ChatScreen({ navigation }) {
     { label: "👯 Twin Comparison", query: "How am I performing compared to my Digital Twin?" },
   ];
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (flatListRef.current && messages.length > 0) {
       setTimeout(() => {
@@ -67,7 +64,6 @@ export default function ChatScreen({ navigation }) {
     setIsLoading(true);
 
     try {
-      // Call Backend API
       const response = await chatService.sendQuery(textToSend.trim());
 
       let aiResponseText = "";
@@ -176,7 +172,6 @@ export default function ChatScreen({ navigation }) {
     </View>
   );
 
-  // === 修改部分：Footer 组件，包含 Loading 和 建议 Chips ===
   const renderFooter = () => (
     <View style={styles.footerContainer}>
       {isLoading && (
@@ -187,8 +182,7 @@ export default function ChatScreen({ navigation }) {
           </Text>
         </View>
       )}
-      
-      {/* 始终显示建议问题，除非正在加载 */}
+
       {!isLoading && (
         <View style={styles.suggestionsContainer}>
           <Text style={[styles.suggestionsHeader, { color: colors.onSurface + '80' }]}>
@@ -257,7 +251,7 @@ export default function ChatScreen({ navigation }) {
         style={styles.messagesList}
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
-        ListFooterComponent={renderFooter} // 使用 Footer 显示建议
+        ListFooterComponent={renderFooter} 
       />
 
       {/* Input Section */}

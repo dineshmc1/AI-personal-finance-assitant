@@ -11,7 +11,7 @@ BillFrequency = Literal["Monthly", "Bi-Weekly", "Quarterly", "Annually"]
 
 BudgetPeriod = Literal["Monthly", "Weekly"]
 
-# === Category 模型 ===
+# === Category ===
 class CategoryCreate(BaseModel):
     name: str = Field(..., description="Name of the category")
     type: TransactionType = Field(..., description="Income or Expense")
@@ -26,7 +26,7 @@ class CategoryDB(CategoryCreate):
     class Config:
         from_attributes = True
 
-# === Account 模型 ===
+# === Account ===
 class AccountBase(BaseModel):
     name: str = Field(..., description="User-defined name for the account")
     current_balance: float = Field(0.0, description="The current balance")
@@ -40,7 +40,7 @@ class AccountDB(AccountBase):
     class Config:
         from_attributes = True
 
-# === Transaction 模型 ===
+# === Transaction ===
 class TransactionBase(BaseModel):
     transaction_date: date = Field(..., description="Date (YYYY-MM-DD)")
     type: TransactionType = Field(..., description="'Income' or 'Expense'")
@@ -58,7 +58,7 @@ class TransactionDB(TransactionBase):
     
 Transaction = TransactionBase
 
-# === Goal 模型 ===
+# === Goal ===
 class GoalCreate(BaseModel):
     name: str = Field(..., description="Goal name")
     target_amount: float = Field(..., gt=0)
@@ -84,7 +84,7 @@ class GoalCalculated(BaseModel):
     weekly_investment_required: float
     monthly_investment_required: float
 
-# === Budget 模型 (修复后) ===
+# === Budget ===
 class BudgetCreate(BaseModel):
     name: str = Field(..., description="Budget name")
     category: TransactionCategory = Field(..., description="Spending category")
@@ -110,7 +110,7 @@ class BudgetCalculated(BaseModel):
     days_remaining: int
     daily_spending_limit: float
 
-# === Bill 模型 ===
+# === Bill  ===
 class BillCreate(BaseModel):
     name: str
     amount: float = Field(..., gt=0)
@@ -124,7 +124,7 @@ class BillDB(BillCreate):
     class Config:
         from_attributes = True
 
-# === Calendar 模型 ===
+# === Calendar  ===
 class CalendarEvent(BaseModel):
     id: Optional[str] = None 
     event_date: date
@@ -133,7 +133,7 @@ class CalendarEvent(BaseModel):
     amount: Optional[float]
     source: Optional[str]
 
-# === Debt 模型 ===
+# === Debt  ===
 class DebtCreate(BaseModel):
     name: str
     initial_principal: float = Field(gt=0)
@@ -158,7 +158,7 @@ class DebtReport(BaseModel):
     recommendation: Dict[str, Any]
     analysis_date: date = Field(default_factory=date.today)
 
-# === Twin & Gamification 模型 ===
+# === Twin & Gamification  ===
 class Badge(BaseModel):
     id: str
     name: str

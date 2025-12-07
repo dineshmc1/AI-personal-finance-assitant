@@ -7,7 +7,7 @@ import {
   TouchableOpacity, 
   RefreshControl, 
   Dimensions,
-  Alert // 引入 Alert
+  Alert 
 } from "react-native";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -23,7 +23,7 @@ export default function TwinScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [twinData, setTwinData] = useState(null);
   
-  // === 新增：Claim 状态 ===
+  // === Claim ===
   const [isClaiming, setIsClaiming] = useState(false);
 
   const loadTwinData = async () => {
@@ -49,7 +49,6 @@ export default function TwinScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  // === 新增：处理领奖逻辑 ===
   const handleClaimXP = async () => {
     setIsClaiming(true);
     try {
@@ -62,11 +61,9 @@ export default function TwinScreen({ navigation }) {
             }
             Alert.alert("🎉 Rewards Claimed!", msg);
             
-            // 领奖成功后，刷新数据以更新等级和 XP
             await loadTwinData(); 
         }
     } catch (error) {
-        // 后端抛出的 400 错误（如时间未到、已领过）会在这里捕获
         const errorMessage = error.message || "You cannot claim rewards right now.";
         Alert.alert("Claim Failed", errorMessage);
     } finally {
@@ -78,7 +75,6 @@ export default function TwinScreen({ navigation }) {
   const renderTwinBar = (label, scenario, color, isUser = false) => {
     if (!scenario) return null;
     const income = scenario.income || 1;
-    // 计算储蓄百分比 (Savings Rate)
     const savingsPercent = (scenario.savings / income);
     
     return (
@@ -122,9 +118,8 @@ export default function TwinScreen({ navigation }) {
 
   const { gamification_profile, user_stats, easy_twin, medium_twin, hard_twin, battle_status } = twinData;
   
-  // 计算升级进度
   const progressToNextLevel = gamification_profile.xp_to_next_level > 0 
-      ? (gamification_profile.current_xp % 1000) / 1000 // 假设每级 1000 XP，取余数计算当前进度
+      ? (gamification_profile.current_xp % 1000) / 1000 
       : 0;
 
   return (
@@ -192,7 +187,6 @@ export default function TwinScreen({ navigation }) {
                 </View>
             </View>
 
-            {/* === 新增：结算按钮 === */}
             <TouchableOpacity 
                 style={[styles.claimButton, { opacity: isClaiming ? 0.7 : 1 }]}
                 onPress={handleClaimXP}

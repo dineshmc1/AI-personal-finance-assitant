@@ -25,14 +25,12 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
-// 1. 引入 Context
 import { useTransactions } from "../contexts/TransactionContext";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function UploadScreen() {
   const { colors } = useTheme();
-  // 2. 获取 uploadReceipt, addTransaction 和 categories, getCategoryIcon
   const { 
     addTransaction, 
     uploadReceipt, 
@@ -55,7 +53,7 @@ export default function UploadScreen() {
   const [isDownloading, setIsDownloading] = useState(false);
   
   const [manualEntry, setManualEntry] = useState({
-    type: 'expend', // 前端用 'expend', 提交时转 'Expense'
+    type: 'expend',
     amount: '',
     category: '',
     description: '',
@@ -63,13 +61,11 @@ export default function UploadScreen() {
     time: new Date().toTimeString().split(' ')[0].substring(0, 5)
   });
 
-  // === 3. 动态获取分类列表 (替代写死的 categories 对象) ===
   const displayCategories = categories.filter(c => 
       (manualEntry.type === 'expend' && c.type === 'Expense') ||
       (manualEntry.type === 'income' && c.type === 'Income')
   );
 
-  // 兜底默认分类 (防止网络慢没加载出来时为空)
   const fallbackCategories = manualEntry.type === 'expend' 
       ? ['Food', 'Transport', 'Shopping', 'Bills'] 
       : ['Salary', 'Freelance'];
@@ -107,7 +103,7 @@ export default function UploadScreen() {
     ]).start();
   };
 
-  // ... (文件上传逻辑保持不变：pickDocument, takePhoto, pickImageFromGallery, handleFileUpload) ...
+  // ... pickDocument, takePhoto, pickImageFromGallery, handleFileUpload ...
   const handleFileUpload = async (uri, type, name, mimeType) => {
     setIsSaving(true);
     startProgressAnimation();
@@ -169,11 +165,10 @@ export default function UploadScreen() {
 
   const viewImage = (image) => { setSelectedImage(image); setShowImageModal(true); };
   
-  const downloadImage = async () => { /* ... (保持不变) ... */ };
-  const showAlternativeOptions = () => { /* ... (保持不变) ... */ };
-  const deleteImage = (imageId, imageName) => { /* ... (保持不变) ... */ };
+  const downloadImage = async () => { /* ... (no change) ... */ };
+  const showAlternativeOptions = () => { /* ... (no change) ... */ };
+  const deleteImage = (imageId, imageName) => { /* ... (no change) ... */ };
 
-  // === 4. 手动添加逻辑 ===
   const handleManualEntry = async () => {
     if (!manualEntry.amount || !manualEntry.category || !manualEntry.description) {
       alert('Please fill all required fields');
@@ -191,12 +186,11 @@ export default function UploadScreen() {
         date: new Date(manualEntry.date),
         time: manualEntry.time,
         description: manualEntry.description,
-        icon: getCategoryIcon(manualEntry.category) // 使用 Context 函数
+        icon: getCategoryIcon(manualEntry.category) 
       };
 
       await new Promise(resolve => setTimeout(resolve, 1000)); 
       
-      // 调用 Context 中的 addTransaction (它会调用后端 API)
       await addTransaction(newTransaction);
       
       finishProgressAnimation();
@@ -214,7 +208,7 @@ export default function UploadScreen() {
         time: new Date().toTimeString().split(' ')[0].substring(0, 5)
       });
       
-      navigation.navigate('MainRoot'); // 或者是 'Home'
+      navigation.navigate('MainRoot'); 
       
     } catch (error) {
       alert('Failed to save transaction');
@@ -266,11 +260,10 @@ export default function UploadScreen() {
 
         {/* Recent Uploads List (Optional, keeps previous logic) */}
         <View style={styles.recentSection}>
-           {/* ... (省略 recent items 渲染逻辑，保持你原来那样) ... */}
         </View>
       </ScrollView>
 
-      {/* Image View Modal (省略，保持不变) */}
+      {/* Image View Modal */}
       {/* ... */}
 
       {/* Manual Entry Modal - UPDATED */}
@@ -287,7 +280,7 @@ export default function UploadScreen() {
           </LinearGradient>
 
           <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
-            {/* Loading Overlay (保持不变) */}
+            {/* Loading Overlay */}
             {isSaving && (
               <View style={styles.loadingOverlay}>
                  <ActivityIndicator size="large" color={colors.primary} />
@@ -330,7 +323,7 @@ export default function UploadScreen() {
               />
             </View>
 
-            {/* === 5. 动态分类 Grid === */}
+            {/* === Grid === */}
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Category</Text>
               <View style={styles.categoryGrid}>
@@ -380,7 +373,6 @@ export default function UploadScreen() {
 
             {/* Date & Time */}
             <View style={styles.section}>
-               {/* ... (日期时间输入，保持不变) ... */}
                <View style={styles.row}>
                 <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
                   <Text style={[styles.label, { color: colors.onSurface }]}>Date</Text>

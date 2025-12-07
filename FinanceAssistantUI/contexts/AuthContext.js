@@ -13,7 +13,6 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   initializeAuth,
-  // 关键：从 firebase/auth 导入持久化工具
   getReactNativePersistence, 
   onIdTokenChanged,
   signInWithEmailAndPassword,
@@ -33,20 +32,16 @@ const AUTH_TOKEN_KEY = 'finance-assistant:idToken';
 let firebaseApp;
 let authInstance;
 
-// === 1. 初始化 Firebase App 和 Auth ===
 try {
   validateFirebaseConfig();
   
-  // 防止热重载时重复初始化
   if (!getApps().length) {
     firebaseApp = initializeApp(firebaseConfig);
-    // 首次初始化：配置持久化
     authInstance = initializeAuth(firebaseApp, {
       persistence: getReactNativePersistence(AsyncStorage)
     });
   } else {
     firebaseApp = getApp();
-    // 已经初始化过：直接获取实例
     authInstance = getAuth(firebaseApp);
   }
 } catch (error) {
@@ -56,11 +51,9 @@ try {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [idToken, setIdToken] = useState(null);
-  // 默认 true，等待 Firebase 首次回调
   const [initializing, setInitializing] = useState(true); 
   const [authError, setAuthError] = useState(null);
 
-  // === 2. 监听 Auth 状态变化 ===
   useEffect(() => {
     if (!authInstance) {
       setAuthError('Firebase is not configured. Check keys.');
@@ -71,32 +64,27 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onIdTokenChanged(authInstance, async (currentUser) => {
       if (currentUser) {
         try {
-          // 强制获取最新 Token
           const token = await currentUser.getIdToken();
           setUser(currentUser);
           setIdToken(token);
-          setAuthToken(token); // 设置给 API Client
+          setAuthToken(token); 
           await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
         } catch (err) {
           console.error('[Auth] Failed to fetch ID token:', err);
           setAuthError(err.message);
         }
       } else {
-        // 用户登出
         setUser(null);
         setIdToken(null);
         clearAuthToken();
         await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
       }
       
-      // 无论登录还是登出，第一次回调后，初始化结束
       setInitializing(false);
     });
 
     return unsubscribe;
   }, []);
-
-  // === 3. 核心功能函数 ===
 
   const login = useCallback(async (email, password) => {
     if (!authInstance) throw new Error('Auth not ready');
@@ -147,7 +135,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // 设置自动刷新 Token 的 Handler
   useEffect(() => {
     setTokenRefreshHandler(async () => {
       try {

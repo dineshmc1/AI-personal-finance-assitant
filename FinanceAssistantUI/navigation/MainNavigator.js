@@ -7,7 +7,6 @@ import DrawerNavigator from "./DrawerNavigator";
 import LoadingScreen from "../screens/LoadingScreen";
 import ChatScreen from "../screens/ChatScreen";
 import LoginScreen from "../screens/LoginScreen";
-// 👇 1. 在这里引入 CalendarScreen
 import CalendarScreen from "../screens/CalendarScreen"; 
 import TwinScreen from "../screens/TwinScreen";
 
@@ -59,7 +58,6 @@ export default function MainNavigator() {
           }}
         >
           {isAuthenticated ? (
-            // --- 这里的页面只有登录后才能看到 ---
             <>
               <Stack.Screen name="MainRoot" component={DrawerNavigator} />
               
@@ -69,7 +67,6 @@ export default function MainNavigator() {
                 options={{ headerShown: false }}
               />
 
-              {/* 👇 2. 在这里添加 Calendar 路由 */}
               <Stack.Screen 
                 name="Calendar" 
                 component={CalendarScreen}
@@ -83,7 +80,6 @@ export default function MainNavigator() {
               />
             </>
           ) : (
-            // --- 这里的页面只有【没登录】时才能看到 ---
             <Stack.Screen 
               name="Login" 
               component={LoginScreen} 

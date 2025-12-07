@@ -13,18 +13,11 @@ from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO)
 
-# === 移除顶层 db 初始化 ===
-# try:
-#     db = firestore.client()
-# except ValueError:
-#     db = None
-
 calendar_router = APIRouter(
     prefix="/calendar",
     tags=["Cash Flow Calendar"],
 )
 
-# === 新增：获取 DB 的辅助函数 ===
 def get_db():
     try:
         return firestore.client()
@@ -58,7 +51,7 @@ async def create_bill(
     user_id: Annotated[str, Depends(get_current_user_id)]
 ):
     """Creates a new user-defined recurring bill payment."""
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
@@ -88,7 +81,6 @@ async def generate_bill_events(user_id: str, start_date: date, end_date: date, d
         
         for doc in docs:
             bill_data = doc.to_dict()
-            # 确保 next_due_date 是 date 对象
             if isinstance(bill_data['next_due_date'], str):
                 bill_data['next_due_date'] = date.fromisoformat(bill_data['next_due_date'])
                 
@@ -98,14 +90,13 @@ async def generate_bill_events(user_id: str, start_date: date, end_date: date, d
             
             one_cycle = timedelta(days=365) if bill.frequency == "Annually" else timedelta(days=30)
             
-            # 向前倒推日期，确保周期正确覆盖查询范围
             while current_date > start_date + one_cycle:
                 current_date = current_date - one_cycle
                 
             while current_date <= end_date:
                 if current_date >= start_date:
                     events.append(CalendarEvent(
-                        id=bill.id, # <--- 关键修改：传入 bill.id
+                        id=bill.id, 
                         event_date=current_date,
                         type="User Bill",
                         name=f"{bill.name} (RM {bill.amount:.2f})",
@@ -125,7 +116,6 @@ async def generate_bill_events(user_id: str, start_date: date, end_date: date, d
 
 async def generate_system_recurring_events(user_id: str, db: Any) -> List[CalendarEvent]:
     """Generates calendar events from the recurring detection module."""
-    # 这个函数已经接收 db 参数了，所以逻辑是对的，只要确保调用方传入了有效的 db
     events: List[CalendarEvent] = []
     
     recurring_report = await get_recurring_report(user_id, db)
@@ -193,7 +183,7 @@ async def get_cash_flow_calendar_report(
     Generates a full cash flow calendar report combining user-defined bills,
     recurring payments/income, and budget reset dates for the specified month.
     """
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
@@ -214,7 +204,6 @@ async def get_cash_flow_calendar_report(
         next_year = target_date.year + (target_date.month // 12)
         end_date = date(next_year, next_month, 1) - timedelta(days=1)
         
-        # === 修改：传入 db ===
         user_bill_events = await generate_bill_events(user_id, start_date, end_date, db)
         
         system_recurring_events = await generate_system_recurring_events(user_id, db)
@@ -239,7 +228,6 @@ async def get_cash_flow_calendar_report(
         logging.error(f"Calendar Report Generation Failed: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate calendar report: {str(e)}")
     
-    # === 新增：Delete Bill ===
 @calendar_router.delete("/bill/{bill_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bill(
     bill_id: str,
@@ -269,7 +257,6 @@ async def delete_bill(
         raise HTTPException(status_code=500, detail="Failed to delete bill")
 
 
-# === 新增：Update Bill ===
 @calendar_router.put("/bill/{bill_id}", response_model=BillDB)
 async def update_bill(
     bill_id: str,

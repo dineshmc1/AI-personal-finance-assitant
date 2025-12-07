@@ -12,28 +12,17 @@ from models import DebtCreate, DebtDB, RepaymentPlanSummary, DebtReport
 
 logging.basicConfig(level=logging.INFO)
 
-# === 移除顶层 db 初始化 ===
-# try:
-#     db = firestore.client()
-# except ValueError:
-#     db = None
-
 debt_router = APIRouter(
     prefix="/debt",
     tags=["Debt Manager"],
 )
 
-# === 新增：获取 DB 的辅助函数 ===
 def get_db():
     try:
         return firestore.client()
     except Exception as e:
         print(f"Database connection error: {e}")
         return None
-
-# (注意：这里你之前重复定义了 DebtCreate, DebtDB 等模型，
-# 如果 models.py 里已经有了，建议直接用 models.py 里的。
-# 为了防止报错，这里保留你的定义，但逻辑上建议统一管理)
 
 class DebtCreate(BaseModel):
     """Schema for creating a new debt entry."""
@@ -158,7 +147,7 @@ async def create_debt(
     user_id: Annotated[str, Depends(get_current_user_id)]
 ):
     """Creates a new debt entry for the authenticated user."""
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
@@ -178,7 +167,7 @@ async def list_debts(
     user_id: Annotated[str, Depends(get_current_user_id)]
 ):
     """Retrieves all debts for the authenticated user."""
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
@@ -207,7 +196,7 @@ async def get_debt_optimization_report(
     Generates a full debt optimization report, comparing Snowball vs. Avalanche 
     methods, including the impact of an extra monthly payment.
     """
-    db = get_db() # 获取 DB
+    db = get_db() 
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 

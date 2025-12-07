@@ -5,25 +5,22 @@ import { useTheme, Button } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 
-// 1. 引入 Auth 和 API
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../services/apiClient";
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
   
-  // 2. 获取真实用户状态
   const { user, logout } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
   
-  // 后端测试状态
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState("");
 
   const [userData, setUserData] = useState({
-    name: user?.displayName || "User", // 使用 Firebase 的名字
-    email: user?.email || "No Email",  // 使用 Firebase 的邮箱
+    name: user?.displayName || "User", 
+    email: user?.email || "No Email",  
     phone: "+60 12-345 6789",
     monthlyIncome: 5000,
     savingsGoal: 1000,
@@ -32,12 +29,10 @@ export default function ProfileScreen() {
 
   const [tempData, setTempData] = useState(userData);
 
-  // --- 3. 添加测试后端连接的函数 ---
   const handleTestBackend = async () => {
     setTestLoading(true);
     setTestResult("");
     try {
-      // 调用 API 进行健康检查
       const response = await api.healthCheck();
       console.log("Backend response:", response);
       setTestResult(`✅ Connected! Status: ${response.status}`);
@@ -51,7 +46,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // --- 4. 添加登出函数 ---
   const handleLogout = async () => {
     Alert.alert(
       "Sign Out",
@@ -226,7 +220,7 @@ export default function ProfileScreen() {
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
         </TouchableOpacity>
 
-        {/* 2. Notifications (已加回) */}
+        {/* 2. Notifications  */}
         <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface }]}>
           <MaterialCommunityIcons name="bell" size={24} color={colors.primary} />
           <View style={styles.settingInfo}>
@@ -236,7 +230,7 @@ export default function ProfileScreen() {
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
         </TouchableOpacity>
 
-        {/* 3. Data & Reports (已加回) */}
+        {/* 3. Data & Reports */}
         <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface }]}>
           <MaterialCommunityIcons name="chart-box" size={24} color={colors.primary} />
           <View style={styles.settingInfo}>

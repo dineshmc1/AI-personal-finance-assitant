@@ -21,7 +21,6 @@ import { useTransactions } from "../contexts/TransactionContext";
 
 export default function GoalsScreen() {
   const { colors } = useTheme();
-  // === 1. 从 Context 获取 categories 和 getCategoryIcon ===
   const { 
     goals, 
     addGoal: createGoalContext, 
@@ -29,8 +28,8 @@ export default function GoalsScreen() {
     getCurrentBalance, 
     loadGoals, 
     deleteGoal,
-    categories,       // <--- 获取所有分类
-    getCategoryIcon   // <--- 获取图标辅助函数
+    categories,     
+    getCategoryIcon   
   } = useTransactions();
   
   const [showAddGoal, setShowAddGoal] = useState(false);
@@ -44,16 +43,13 @@ export default function GoalsScreen() {
     targetAmount: "",
     currentAmount: "",
     deadline: null,
-    category: "Savings" // 默认分类
+    category: "Savings" 
   });
 
   useEffect(() => {
     loadGoals();
   }, []);
 
-  // === 2. 动态生成分类列表 (不再硬编码) ===
-  // 我们可以显示所有分类，或者只显示 Expense 类型的分类作为目标类别
-  // 这里我们展示所有可用分类的名字
   const availableCategories = categories.length > 0 
       ? categories.map(c => c.name) 
       : ["Savings", "Travel", "Vehicle", "Housing", "Education", "Investments", "Other"]; // Fallback
@@ -360,7 +356,7 @@ export default function GoalsScreen() {
               <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="0" placeholderTextColor={colors.onSurface + '80'} keyboardType="decimal-pad" value={newGoal.currentAmount} onChangeText={(text) => setNewGoal({...newGoal, currentAmount: text})} />
             </View>
             
-            {/* === 3. 动态渲染分类 Grid === */}
+            {/* === Grid === */}
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.onSurface }]}>Category</Text>
               <View style={styles.categoryGrid}>
@@ -401,7 +397,7 @@ export default function GoalsScreen() {
         </View>
       </Modal>
 
-      {/* Edit Amount Modal (保持不变) */}
+      {/* Edit Amount Modal  */}
       <Modal visible={showEditAmount} animationType="fade" transparent>
         <View style={styles.editAmountOverlay}>
           <View style={[styles.editAmountModal, { backgroundColor: colors.surface }]}>

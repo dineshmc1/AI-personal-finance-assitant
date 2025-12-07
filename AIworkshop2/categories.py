@@ -18,7 +18,6 @@ def get_db():
         print(f"Database connection error: {e}")
         return None
 
-# === 静态默认分类 (存在代码里，不存数据库) ===
 DEFAULT_CATEGORIES = [
     {"name": "Food", "type": "Expense", "icon": "food", "color": "#FF6B6B"},
     {"name": "Transport", "type": "Expense", "icon": "car", "color": "#4ECDC4"},
@@ -48,26 +47,20 @@ async def list_categories(
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
-        # 1. 准备默认分类 (给它们生成临时的 ID，标记为 default)
         final_list = []
         for cat in DEFAULT_CATEGORIES:
-            # 构造 CategoryDB 对象
-            # id 使用 'default_名字'，方便前端识别和防止 ID 冲突
             final_list.append(CategoryDB(
                 id=f"default_{cat['name']}", 
-                user_id=user_id, # 虚拟归属给当前用户，方便前端处理
+                user_id=user_id, 
                 is_default=True,
                 **cat
             ))
 
-        # 2. 从数据库获取用户自定义分类
         cats_ref = db.collection('categories').where("user_id", "==", user_id)
         docs = cats_ref.stream()
         
         for doc in docs:
-            # 数据库里的肯定是自定义的，is_default=False
             data = doc.to_dict()
-            # 确保 data 里没有 is_default 脏数据干扰，强制设为 False
             data['is_default'] = False 
             final_list.append(CategoryDB(id=doc.id, **data))
                 
@@ -90,9 +83,8 @@ async def create_category(
     try:
         cat_dict = category_data.model_dump()
         cat_dict['user_id'] = user_id
-        cat_dict['is_default'] = False # 强制标记为自定义
+        cat_dict['is_default'] = False 
 
-        # 检查名字是否和默认分类冲突 (可选，为了避免混淆)
         for default in DEFAULT_CATEGORIES:
             if default['name'].lower() == cat_dict['name'].lower() and default['type'] == cat_dict['type']:
                  raise HTTPException(status_code=400, detail="This category already exists as a default.")
@@ -116,7 +108,6 @@ async def delete_category(
     db = get_db()
     if not db: raise HTTPException(status_code=503, detail="Database unavailable")
     
-    # 1. 拦截：绝对不允许删除默认分类
     if category_id.startswith("default_"):
         raise HTTPException(status_code=403, detail="Default categories cannot be deleted.")
     
