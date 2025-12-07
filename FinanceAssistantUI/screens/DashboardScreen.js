@@ -17,6 +17,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTransactions } from "../contexts/TransactionContext";
 import ProgressBar from "../components/ProgressBar";
 import SummaryCard from "../components/SummaryCard";
+// 引入 API 请求
+import { apiRequest } from "../services/apiClient";
 
 const { width, height } = Dimensions.get('window');
 
@@ -36,10 +38,22 @@ export default function DashboardScreen({ navigation }) {
   const [timeRange, setTimeRange] = useState('month');
   const [chartModalVisible, setChartModalVisible] = useState(false);
   const [selectedChartType, setSelectedChartType] = useState('income');
+  
+  // === Twin Data State ===
+  const [twinData, setTwinData] = useState(null);
 
-  // 初始化加载日历
+  // 加载 Twin 数据
+  const loadTwinData = async () => {
+    try {
+      const data = await apiRequest('/twin/dashboard');
+      if (data) setTwinData(data);
+    } catch (e) { console.log("Twin Load Error:", e); }
+  };
+
+  // 初始化加载所有数据
   useEffect(() => {
     loadCalendarEvents();
+    loadTwinData();
   }, []);
 
   // === 计算即将到期的账单 (未来 7 天) ===
@@ -193,7 +207,8 @@ export default function DashboardScreen({ navigation }) {
     await Promise.all([
         loadTransactions(), 
         loadBudgets(),
-        loadCalendarEvents() // 刷新日历
+        loadCalendarEvents(), // 刷新日历
+        loadTwinData()        // 刷新 Twin 数据
     ]);
     setRefreshing(false);
   };
@@ -420,7 +435,40 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* === Upcoming Bills Section (修改版：空状态也显示) === */}
+        {/* === 新增：Twin Battle Card === */}
+        {twinData && (
+          <TouchableOpacity 
+            style={[styles.section, { padding: 0, overflow: 'hidden' }]} 
+            onPress={() => navigation.navigate('Twin')}
+          >
+            <LinearGradient
+                colors={['#6A11CB', '#2575FC']} 
+                start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+                style={{ padding: 20 }}
+            >
+                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <View style={{flex: 1}}>
+                        <Text style={{color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 'bold', marginBottom: 4}}>FINANCIAL BATTLE</Text>
+                        <Text style={{color: 'white', fontSize: 16, fontWeight: 'bold'}}>
+                            {twinData.battle_status.includes("Winning") || twinData.battle_status.includes("UNSTOPPABLE") 
+                                ? "🏆 You are winning!" 
+                                : "⚔️ Keep pushing!"}
+                        </Text>
+                        <Text style={{color: 'white', fontSize: 12, opacity: 0.8, marginTop: 4}}>
+                            Vs. {twinData.easy_twin.savings < twinData.user_stats.savings ? "Easy Twin" : "Twins"}
+                        </Text>
+                    </View>
+                    
+                    <View style={{alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12}}>
+                        <Text style={{color: 'white', fontSize: 10, fontWeight: 'bold'}}>LEVEL</Text>
+                        <Text style={{color: '#FFD700', fontSize: 24, fontWeight: 'bold'}}>{twinData.gamification_profile.level}</Text>
+                    </View>
+                </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
+        {/* === Upcoming Bills Section (空状态也显示) === */}
         <View style={[styles.section, { backgroundColor: colors.surface }]}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
@@ -454,7 +502,6 @@ export default function DashboardScreen({ navigation }) {
               </View>
             ))
           ) : (
-            // === 这里显示空状态，而不是隐藏 ===
             <View style={{ alignItems: 'center', paddingVertical: 20 }}>
               <MaterialCommunityIcons name="check-circle-outline" size={40} color={colors.onSurface} style={{ opacity: 0.2, marginBottom: 8 }} />
               <Text style={{ color: colors.onSurface, opacity: 0.6, fontSize: 14 }}>
@@ -462,7 +509,7 @@ export default function DashboardScreen({ navigation }) {
               </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Calendar')}>
                  <Text style={{ color: colors.primary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>
-                    Check Calendar to Add Bill
+                    Check Calendar
                  </Text>
               </TouchableOpacity>
             </View>

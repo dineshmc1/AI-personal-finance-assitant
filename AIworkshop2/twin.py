@@ -49,7 +49,8 @@ def get_or_create_profile(user_id: str, db) -> GamificationProfile:
             current_xp=data.get('current_xp', 0),
             xp_to_next_level=data.get('xp_to_next_level', 1000),
             total_battles_won=data.get('total_battles_won', 0),
-            badges=badges
+            badges=badges,
+            last_claimed_month=data.get('last_claimed_month') # 读取上次领奖时间
         )
     else:
         new_profile = GamificationProfile(user_id=user_id)
@@ -63,9 +64,6 @@ def update_xp(user_id: str, amount: int, db):
     
     new_level, next_xp = calculate_level(profile.current_xp)
     
-    if new_level > profile.level:
-        pass 
-
     profile.level = new_level
     profile.xp_to_next_level = next_xp
     
@@ -236,12 +234,28 @@ async def claim_monthly_xp(
 ):
     """
     Call this at the end of the month (or manually) to claim XP based on performance.
+    Prevents claiming multiple times per month and claiming too early.
     """
     db = get_db() # 获取 DB
     if not db:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
     
     today = date.today()
+    current_month_str = today.strftime("%Y-%m")
+    
+    # === 修复漏洞 1：限制只能在月底 (例如 25号之后) 领奖 ===
+    # 为了测试方便，你可以暂时注释掉这行，或者把 25 改成 1
+    if today.day < 25:
+        raise HTTPException(status_code=400, detail="It's too early! Come back after the 25th to claim your monthly rewards.")
+
+    # 获取用户 Profile
+    profile = get_or_create_profile(user_id, db)
+
+    # === 修复漏洞 2：检查本月是否已领奖 ===
+    if profile.last_claimed_month == current_month_str:
+        raise HTTPException(status_code=400, detail="You have already claimed XP for this month!")
+    
+    # 开始计算 XP
     start_date = date(today.year, today.month, 1).isoformat()
     
     transactions_ref = db.collection('transactions')\
@@ -283,11 +297,15 @@ async def claim_monthly_xp(
     if xp_gained == 0:
         return {"message": "Keep trying! No XP gained this time.", "xp_gained": 0}
 
-    profile = get_or_create_profile(user_id, db)
+    # 更新 Profile
     profile.current_xp += xp_gained
-    profile.total_battles_won += 1 if xp_gained > 0 else 0
+    profile.total_battles_won += 1
     profile.badges.extend(badges_earned)
     
+    # === 关键：记录本月已领 ===
+    profile.last_claimed_month = current_month_str 
+    
+    # 升级逻辑
     new_level, next_xp = calculate_level(profile.current_xp)
     profile.level = new_level
     profile.xp_to_next_level = next_xp

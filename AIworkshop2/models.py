@@ -5,12 +5,10 @@ from typing import Literal, Optional, List, Dict, Any
 
 TransactionType = Literal["Income", "Expense"]
 
-# 允许任意字符串作为分类名，支持用户自定义
 TransactionCategory = str 
 
 BillFrequency = Literal["Monthly", "Bi-Weekly", "Quarterly", "Annually"]
 
-# 预算周期
 BudgetPeriod = Literal["Monthly", "Weekly"]
 
 # === Category 模型 ===
@@ -90,7 +88,6 @@ class GoalCalculated(BaseModel):
 class BudgetCreate(BaseModel):
     name: str = Field(..., description="Budget name")
     category: TransactionCategory = Field(..., description="Spending category")
-    # 🔴 修复：只保留 limit_amount，删除了 monthly_limit
     limit_amount: float = Field(..., gt=0, description="Spending limit for the period") 
     period: BudgetPeriod = Field("Monthly", description="Budget cycle")
 
@@ -105,7 +102,6 @@ class BudgetCalculated(BaseModel):
     user_id: str
     name: str
     category: TransactionCategory
-    # 🔴 修复：只保留 limit_amount
     limit_amount: float 
     period: BudgetPeriod 
 
@@ -177,6 +173,7 @@ class GamificationProfile(BaseModel):
     xp_to_next_level: int = Field(1000)
     total_battles_won: int = Field(0)
     badges: List[Badge] = []
+    last_claimed_month: Optional[str] = None
 
 class TwinScenario(BaseModel):
     difficulty: Literal["User (You)", "Easy Twin", "Medium Twin", "Hard Twin"]

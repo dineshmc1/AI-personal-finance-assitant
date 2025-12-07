@@ -9,6 +9,7 @@ import ChatScreen from "../screens/ChatScreen";
 import LoginScreen from "../screens/LoginScreen";
 // 👇 1. 在这里引入 CalendarScreen
 import CalendarScreen from "../screens/CalendarScreen"; 
+import TwinScreen from "../screens/TwinScreen";
 
 import { useAuth } from "../contexts/AuthContext";
 
@@ -72,6 +73,12 @@ export default function MainNavigator() {
               <Stack.Screen 
                 name="Calendar" 
                 component={CalendarScreen}
+                options={{ headerShown: false }} 
+              />
+
+              <Stack.Screen 
+                name="Twin" 
+                component={TwinScreen} 
                 options={{ headerShown: false }} 
               />
             </>
