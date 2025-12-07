@@ -1,5 +1,6 @@
 WORKSHOP_2A
 AIworkshop2/
+	.env
 	accounts.py
 	auth_deps.py
 	budgeter.py
@@ -20,11 +21,20 @@ AIworkshop2/
 	vlm.py
 	__pycache__/
 FinanceAssistantUI/
+	.env
 	App.js
 	app.json
 	babel.config.js
 	index.js
 	package.json
+	.expo/
+		devices.json
+		README.md
+		types/
+			router.d.ts
+	.vscode/
+		extensions.json
+		settings.json
 	assets/
 	components/
 		Header.js
@@ -42,6 +52,7 @@ FinanceAssistantUI/
 	screens/
 		AddTransactionScreen.js
 		BudgetScreen.js
+		CalendarScreen.js
 		CategoriesScreen.js
 		ChatScreen.js
 		ChatSidebar.js
@@ -54,6 +65,7 @@ FinanceAssistantUI/
 		ProfileScreen.js
 		ReportsScreen.js
 		SettingsScreen.js
+		TwinScreen.js
 		UploadScreen.js
 	scripts/
 		reset-project.js

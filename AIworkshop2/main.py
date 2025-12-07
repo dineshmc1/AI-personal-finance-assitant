@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import datetime
 from categories import categories_router
 import traceback
+from models import UserSignup
 
 FIREBASE_CREDENTIAL_PATH = './serviceAccountKey.json'
 FIREBASE_STORAGE_BUCKET = "ai-personal-finance-assi-bdf76.firebasestorage.app" 
@@ -84,6 +85,35 @@ def check_account_ownership(user_id: str, account_id: str, db: Any):
 async def root():
     return {"message": "AI Personal Finance Assistant API is Running!", "status": "OK"}
 
+@app.post("/auth/signup", status_code=status.HTTP_201_CREATED)
+async def register_user(user_data: UserSignup):
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        user_record = auth.create_user(
+            email=user_data.email,
+            password=user_data.password,
+            display_name=user_data.username
+        )
+        
+        default_account = {
+            "name": user_data.username if user_data.username else "Cash",
+            "user_id": user_record.uid,
+            "current_balance": 0.0
+        }
+        
+        db.collection('accounts').add(default_account)
+        
+        return {"message": "User created successfully", "user_id": user_record.uid}
+
+    except auth.EmailAlreadyExistsError:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    except Exception as e:
+        print(f"Signup Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @app.post("/transactions/manual", response_model=TransactionDB, status_code=status.HTTP_201_CREATED)
 async def create_manual_transaction(
     transaction_data: Transaction,

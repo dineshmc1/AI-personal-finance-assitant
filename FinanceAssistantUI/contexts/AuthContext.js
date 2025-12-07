@@ -98,17 +98,33 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const register = useCallback(async (email, password, displayName) => {
-    if (!authInstance) throw new Error('Auth not ready');
-    setAuthError(null);
+    const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.xx.xx:8000"; 
+
     try {
-      const credential = await createUserWithEmailAndPassword(authInstance, email, password);
-      if (displayName) {
-        await updateProfile(credential.user, { displayName });
-      }
-      return credential;
+        const response = await fetch(`${API_URL}/auth/signup`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: email,
+                password: password,
+                username: displayName || "My Wallet"
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || "Signup failed");
+        }
+
+        if (!authInstance) throw new Error('Auth not ready');
+        const credential = await signInWithEmailAndPassword(authInstance, email, password);
+        return credential;
+
     } catch (error) {
-      setAuthError(error.message);
-      throw error;
+        setAuthError(error.message);
+        throw error;
     }
   }, []);
 

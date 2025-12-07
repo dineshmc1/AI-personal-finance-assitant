@@ -193,3 +193,8 @@ class TwinDashboard(BaseModel):
     hard_twin: TwinScenario
     gamification_profile: GamificationProfile
     battle_status: str
+
+class UserSignup(BaseModel):
+    email: str
+    password: str
+    username: str
