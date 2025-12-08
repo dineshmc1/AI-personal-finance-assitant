@@ -1,4 +1,5 @@
 # AI workshop 2/main.py
+import firebase_admin
 from firebase_admin import initialize_app, credentials, firestore, auth, storage 
 from models import Transaction, TransactionDB, AccountDB 
 from vlm import extract_transactions_from_data, VLMTransaction 

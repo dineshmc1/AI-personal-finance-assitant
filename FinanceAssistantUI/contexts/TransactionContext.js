@@ -13,6 +13,7 @@ export const useTransactions = () => {
   return context;
 };
 
+// Helper: Get Icon
 const getCategoryIcon = (categoryName, categoriesList = []) => {
   if (categoriesList && categoriesList.length > 0) {
       const cat = categoriesList.find(c => c.name === categoryName);
@@ -29,6 +30,7 @@ const getCategoryIcon = (categoryName, categoriesList = []) => {
   return icons[categoryName] || 'tag';
 };
 
+// Helper: Get Color
 const getCategoryColor = (categoryName, categoriesList = []) => {
   if (categoriesList && categoriesList.length > 0) {
       const cat = categoriesList.find(c => c.name === categoryName);
@@ -146,7 +148,7 @@ export const TransactionProvider = ({ children }) => {
       }
   };
 
-  // --- Transactions ---
+  // --- Transactions (FIXED) ---
   const loadTransactions = async () => {
     try {
       setLoading(true);
@@ -157,7 +159,10 @@ export const TransactionProvider = ({ children }) => {
           type: tx.type === 'Income' ? 'income' : 'expend',
           category: tx.category,
           amount: tx.amount,
-          date: new Date(tx.transaction_date),
+          // === 修复：安全处理日期 ===
+          // 如果 transaction_date 存在，则转换；否则默认今天，防止崩溃
+          date: tx.transaction_date ? new Date(tx.transaction_date) : new Date(),
+          
           time: tx.transaction_time || "00:00", 
           description: tx.merchant || 'Unknown',
           icon: getCategoryIcon(tx.category, categories) 
