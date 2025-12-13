@@ -8,7 +8,7 @@ const normalizeBaseUrl = (url) => {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 
-const FALLBACK_URL = 'http://192.168.1.26:8000'; 
+const FALLBACK_URL = 'http://10.0.2.2:8000'; 
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 const API_BASE_URL = normalizeBaseUrl(ENV_URL) || FALLBACK_URL;

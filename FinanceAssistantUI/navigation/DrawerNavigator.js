@@ -11,7 +11,6 @@ import ReportsScreen from "../screens/ReportsScreen";
 import BudgetScreen from "../screens/BudgetScreen";
 import CategoriesScreen from "../screens/CategoriesScreen";
 import ExportScreen from "../screens/ExportScreen";
-import GoalsScreen from "../screens/GoalsScreen"; // Add this import
 
 const Drawer = createDrawerNavigator();
 
@@ -104,6 +103,18 @@ export default function DrawerNavigator() {
             <MaterialCommunityIcons name="account" color={color} size={size} />
           ),
           title: "My Profile",
+        }}
+      />
+
+      {/* Optimization Reports */}
+      <Drawer.Screen
+        name="Optimization"
+        component={ReportsScreen}
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="chart-line-variant" color={color} size={size} />
+          ),
+          title: "AI Optimization",
         }}
       />
 
