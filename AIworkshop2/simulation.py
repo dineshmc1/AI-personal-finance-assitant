@@ -169,7 +169,9 @@ async def generate_detailed_report(
     user_question: str, 
     simulation_data: Dict[str, Any], 
     initial_fhs_rating: str,
-    budget_analysis: Dict[str, Any] = None 
+    budget_analysis: Dict[str, Any] = None,
+    twin_scenarios: Dict[str, Any] = None
+    
 ) -> str:
     if not openai_client:
         return "OpenAI unavailable."
@@ -177,13 +179,29 @@ async def generate_detailed_report(
     data_str = json.dumps(simulation_data, indent=2, default=str)
     budget_str = json.dumps(budget_analysis, indent=2, default=str) if budget_analysis else "Not available"
     
+    twin_str = "Not available"
+    if twin_scenarios:
+        # === FIX: Handle Pydantic model serialization safely ===
+        simple_twin = {}
+        for k, v in twin_scenarios.items():
+            if hasattr(v, 'model_dump'):
+                simple_twin[k] = v.model_dump()
+            elif hasattr(v, 'dict'):
+                simple_twin[k] = v.dict()
+            else:
+                simple_twin[k] = str(v)
+        
+        twin_str = json.dumps(simple_twin, indent=2, default=str)
+    
     prompt = (
-        f"You are a professional financial advisor. Answer user's question.\n"
-        f"Question: {user_question}\n"
-        f"Initial FHS: {initial_fhs_rating}\n"
-        f"Budget Analysis: {budget_str}\n"
-        f"Forecast Simulation: {data_str}\n"
-        f"Use Markdown."
+         f"You are a professional financial advisor. Answer user's question.\n"
+        f"Question: {user_question}\n\n"
+        f"--- Financial Context ---\n"
+        f"FHS Rating: {initial_fhs_rating}\n"
+        f"Spending Habits: {budget_str}\n"
+        f"Digital Twin Comparison: {twin_str}\n"
+        f"Future Forecast: {data_str}\n\n"
+        f"Use Markdown. Be concise but encouraging."
     )
     
     try:
@@ -206,7 +224,8 @@ async def generate_simulation_report(
     fhs_report_func: Any,
     lstm_report_func: Any,
     get_balance_func: Any,
-    budget_analysis: Dict[str, Any] 
+    budget_analysis: Dict[str, Any],
+    twin_scenarios: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     
     if not OPENAI_API_KEY:
@@ -236,8 +255,10 @@ async def generate_simulation_report(
         final_report_markdown = await generate_detailed_report(
             user_question, 
             simulation_data,
+
             initial_fhs_rating,
-            budget_analysis 
+            budget_analysis,
+            twin_scenarios
         )
 
         return {

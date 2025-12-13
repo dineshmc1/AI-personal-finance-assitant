@@ -29,6 +29,7 @@ import datetime
 from categories import categories_router
 import traceback
 from models import UserSignup
+from twin import generate_twin_logic
 
 FIREBASE_CREDENTIAL_PATH = './serviceAccountKey.json'
 FIREBASE_STORAGE_BUCKET = "ai-personal-finance-assi-bdf76.firebasestorage.app" 
@@ -396,6 +397,11 @@ async def simulate_user_question(
 
         budget_analysis = analyze_recent_transactions(transactions)
         
+        total_income = sum(t['amount'] for t in transactions if t['type'] == 'Income')
+        total_expense = sum(t['amount'] for t in transactions if t['type'] == 'Expense')
+        
+        twin_scenarios = generate_twin_logic(total_income, total_expense, transactions)
+        
         simulation_result = await run_simulation(
             user_id=user_id,
             user_question=user_question,
@@ -403,7 +409,8 @@ async def simulate_user_question(
             fhs_report_func=lambda uid: async_get_fhs_report_internal(transactions),
             lstm_report_func=lambda uid: async_get_lstm_forecast_internal(transactions),
             get_balance_func=get_total_current_balance, 
-            budget_analysis=budget_analysis 
+            budget_analysis=budget_analysis,
+            twin_scenarios=twin_scenarios 
         )
         
         return simulation_result
