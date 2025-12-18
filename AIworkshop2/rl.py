@@ -13,7 +13,7 @@ import torch
 import os
 import json 
 
-DEVICE = "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"     
 
 
 TICKERS = {
@@ -210,54 +210,29 @@ def fetch_asset_data(tickers: Dict) -> pd.DataFrame:
     return returns
 
 def train_rl_agent(returns_df: pd.DataFrame, risk_aversion: float, initial_portfolio_value: float) -> Tuple[PPO, np.ndarray, Dict]:
-    """Train RL agent for portfolio optimization and return the model, weights, and evaluation."""
-    
     print("\n🚀 Training RL Portfolio Optimizer...")
-    
     env = PortfolioOptimizationEnv(returns_df, risk_aversion, LOOKBACK_WINDOW, initial_portfolio_value)
     
-    try:
-        check_env(env, warn=False)
-    except Exception as e:
-        print(f"⚠️ Environment check warning: {e}. Continuing with training.")
-    
-    model = PPO(
-        "MlpPolicy",
-        env,
-        learning_rate=3e-4,
-        n_steps=1024, 
-        batch_size=64,
-        gamma=0.99,
-        clip_range=0.2,
-        verbose=0,
-        device=DEVICE
-    )
-    
-    print(f"Training for {RL_TRAINING_STEPS} steps...")
+    model = PPO("MlpPolicy", env, learning_rate=3e-4, verbose=0, device=DEVICE)
     model.learn(total_timesteps=RL_TRAINING_STEPS)
     
-    obs, _ = env.reset()
-    done = False
-    
-    while not done:
-        action, _states = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
-
     final_weights = env.get_final_weights()
     
+    # === 关键修复：所有数值转为 float ===
     trading_days = len(env.returns_history)
-    total_return = (env.portfolio_value - INITIAL_PORTFOLIO_VALUE) / INITIAL_PORTFOLIO_VALUE
-    annual_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / trading_days) - 1 if trading_days > 0 else 0
-    volatility = np.std(env.returns_history) * np.sqrt(TRADING_DAYS_PER_YEAR) if env.returns_history else 0
-    sharpe_ratio = annual_return / volatility if volatility > 0 else 0
+    final_value = float(env.portfolio_value)
+    total_return = (final_value - INITIAL_PORTFOLIO_VALUE) / INITIAL_PORTFOLIO_VALUE
+    
+    annual_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / trading_days) - 1 if trading_days > 0 else 0.0
+    volatility = np.std(env.returns_history) * np.sqrt(TRADING_DAYS_PER_YEAR) if env.returns_history else 0.0
+    sharpe_ratio = annual_return / volatility if volatility > 0 else 0.0
     
     rl_results = {
         'total_return': float(total_return),
         'annual_return': float(annual_return),
         'volatility': float(volatility),
         'sharpe_ratio': float(sharpe_ratio),
-        'final_value': float(env.portfolio_value),
+        'final_value': float(final_value),
         'portfolio_history': [float(x) for x in env.portfolio_history]
     }
     
@@ -265,8 +240,6 @@ def train_rl_agent(returns_df: pd.DataFrame, risk_aversion: float, initial_portf
     return model, final_weights, rl_results
 
 def run_monte_carlo(optimized_weights: np.ndarray, returns_df: pd.DataFrame, monthly_contribution: float, num_simulations: int = 100) -> Dict:
-    """Run Monte Carlo simulation using RL-optimized weights for 5, 10, 25 years."""
-    
     time_horizons = [5, 10, 25]
     print(f"\n--- Running {num_simulations} Monte Carlo Simulations ---")
     
@@ -282,25 +255,20 @@ def run_monte_carlo(optimized_weights: np.ndarray, returns_df: pd.DataFrame, mon
         
         for sim in range(num_simulations):
             current_value = 0.0
-            
             for day in range(num_trading_days):
-                if day % 21 == 0: 
-                    current_value += monthly_contribution
-                
+                if day % 21 == 0: current_value += monthly_contribution
                 stochastic_return = np.random.normal(loc=daily_return, scale=daily_volatility)
                 current_value *= (1 + stochastic_return)
-            
             final_values.append(current_value)
             
+        # === 关键修复：Numpy 聚合结果转 float ===
         mc_results[f'{horizon}yr'] = {
-            'mean_value': round(np.mean(final_values), 2),
-            'p5_low': round(np.percentile(final_values, 5), 2),
-            'p95_high': round(np.percentile(final_values, 95), 2),
+            'mean_value': float(round(np.mean(final_values), 2)),
+            'p5_low': float(round(np.percentile(final_values, 5), 2)),
+            'p95_high': float(round(np.percentile(final_values, 95), 2)),
         }
-        print(f"Projected Mean Portfolio Value ({horizon} Years): ${mc_results[f'{horizon}yr']['mean_value']:,.2f}")
         
     return mc_results
-
 
 def generate_rl_optimization_report(
     latest_fhs: float, 
@@ -310,21 +278,15 @@ def generate_rl_optimization_report(
 ) -> Dict[str, Any]:
     """
     Main function to execute the RL portfolio optimization pipeline.
-    
-    :param latest_fhs: The most recent Financial Health Score for personalization.
-    :param starting_balance: The user's actual initial investment amount.
-    :param monthly_contribution: The investable cash flow from LSTM forecast.
-    :param returns_df: The DataFrame of asset returns.
-    :return: A dictionary containing the optimized weights, performance, and Monte Carlo forecast.
     """
     try:
         risk_aversion, risk_profile = get_risk_aversion(latest_fhs)
         
-        
         model, final_weights_raw, rl_performance = train_rl_agent(returns_df, risk_aversion, starting_balance)
         
+        # === 修复：确保权重是 Python float ===
         optimized_weights = {
-            asset: round(weight * 100, 2)
+            asset: float(round(float(weight) * 100, 2))
             for asset, weight in zip(ASSET_NAMES, final_weights_raw)
         }
         
@@ -332,16 +294,16 @@ def generate_rl_optimization_report(
         
         report = {
             "personalization": {
-                "latest_fhs": latest_fhs,
+                "latest_fhs": float(latest_fhs),  # 强制转换
                 "risk_profile": risk_profile,
-                "starting_balance": starting_balance, # ADDED TO REPORT
-                "monthly_contribution": monthly_contribution
+                "starting_balance": float(starting_balance), # 强制转换
+                "monthly_contribution": float(monthly_contribution) # 强制转换
             },
             "rl_performance": {
-                "annual_return_pct": round(rl_performance['annual_return'] * 100, 2),
-                "annual_volatility_pct": round(rl_performance['volatility'] * 100, 2),
-                "sharpe_ratio": round(rl_performance['sharpe_ratio'], 2),
-                "final_value_history": rl_performance['portfolio_history']
+                "annual_return_pct": float(round(rl_performance['annual_return'] * 100, 2)),
+                "annual_volatility_pct": float(round(rl_performance['volatility'] * 100, 2)),
+                "sharpe_ratio": float(round(rl_performance['sharpe_ratio'], 2)),
+                "final_value_history": rl_performance['portfolio_history'] # 已经在 train_rl_agent 里转过了
             },
             "optimized_weights": optimized_weights,
             "mc_forecast": mc_forecast
@@ -353,4 +315,6 @@ def generate_rl_optimization_report(
         return {"error": str(e)}
     except Exception as e:
         print(f"RL Report Generation Error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": f"An unexpected error occurred during RL optimization: {str(e)}"}

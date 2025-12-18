@@ -1,7 +1,7 @@
 # AI workshop 2/budgeter.py
 import os
 from typing import Dict, List, Any, Optional
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from firebase_admin import firestore
 from openai import OpenAI
 import logging
@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 OPENAI_CLIENT = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-MODEL_NAME = "gpt-4.1-mini" 
+MODEL_NAME = "gpt-4o-mini" 
 
 logging.basicConfig(level=logging.INFO)
 
@@ -29,7 +29,15 @@ def analyze_recent_transactions(transactions: List[Dict[str, Any]]) -> Dict[str,
     recent_txs = []
     for tx in transactions:
         try:
-            tx_date = date.fromisoformat(tx['transaction_date'])
+            # 兼容处理：如果是字符串，转换；如果是 date 对象，直接比较
+            raw_date = tx.get('transaction_date')
+            if isinstance(raw_date, str):
+                tx_date = date.fromisoformat(raw_date.split('T')[0]) # 处理可能带时间的情况
+            elif isinstance(raw_date, (date, datetime)):
+                tx_date = raw_date
+            else:
+                continue
+
             if tx_date >= start_date_90_days:
                 recent_txs.append(tx)
         except (ValueError, KeyError):
@@ -39,7 +47,7 @@ def analyze_recent_transactions(transactions: List[Dict[str, Any]]) -> Dict[str,
     total_income = 0.0
     
     for tx in recent_txs:
-        amount = tx.get('amount', 0.0)
+        amount = float(tx.get('amount', 0.0)) # 强制转 float
         tx_type = tx.get('type')
         
         if tx_type == 'Expense':
@@ -49,18 +57,32 @@ def analyze_recent_transactions(transactions: List[Dict[str, Any]]) -> Dict[str,
             total_income += amount
             
     if not recent_txs:
-        return {"error": "No transactions found in the last 90 days."}
+        # 返回全0数据而不是报错，防止后续流程中断
+        return {
+            "avg_monthly_income": 0.0,
+            "avg_monthly_spending": {}
+        }
         
-    days_in_period = (date.today() - date.fromisoformat(recent_txs[0]['transaction_date'])).days
-   
-    factor = days_in_period / 90.0 if days_in_period > 0 else 1.0 
+    # 计算天数跨度，防止除以0
+    if len(recent_txs) > 0:
+        first_date_val = recent_txs[0]['transaction_date']
+        if isinstance(first_date_val, str):
+            first_date = date.fromisoformat(first_date_val.split('T')[0])
+        else:
+            first_date = first_date_val
+            
+        days_in_period = (date.today() - first_date).days
+        factor = days_in_period / 90.0 if days_in_period > 10 else 0.1 # 避免刚开始几天 factor 极小导致平均值爆炸
+    else:
+        factor = 1.0
     
+    # === 修复：强制转换为 Python float，避免 numpy 类型错误 ===
     avg_monthly_spending = {
-        cat: round((amount / factor), 2)
+        cat: float(round((amount / factor), 2))
         for cat, amount in category_spending.items()
     }
     
-    avg_monthly_income = round((total_income / factor), 2)
+    avg_monthly_income = float(round((total_income / factor), 2))
     
     return {
         "avg_monthly_income": avg_monthly_income,
@@ -75,12 +97,15 @@ def generate_budget_prompt(analysis: Dict[str, Any], fhs_report: Dict[str, Any],
     fhs_summary = fhs_report.get('summary', {})
     lstm_summary = lstm_report.get('summary', {})
     
+    # 安全获取数值
+    income = analysis.get('avg_monthly_income', 0.0)
+    
     prompt = f"You are an expert financial assistant creating a smart, 'one-tap' budget for a user.\n"
     prompt += f"The user wants a monthly budget allocation based on their last 90 days of activity.\n\n"
     
     prompt += "--- Financial Data ---\n"
-    prompt += f"Average Monthly Income (Last 90 days): RM {analysis['avg_monthly_income']:.2f}\n"
-    prompt += f"Average Monthly Spending by Category (Last 90 days): {analysis['avg_monthly_spending']}\n"
+    prompt += f"Average Monthly Income (Last 90 days): RM {income:.2f}\n"
+    prompt += f"Average Monthly Spending by Category (Last 90 days): {analysis.get('avg_monthly_spending', {})}\n"
     
     prompt += "\n--- Financial Health and Forecast Context ---\n"
     prompt += f"Financial Health Score (FHS): {fhs_summary.get('latest_fhs', 'N/A')}\n"
@@ -90,7 +115,7 @@ def generate_budget_prompt(analysis: Dict[str, Any], fhs_report: Dict[str, Any],
     
     
     prompt += "\n--- Task ---\n"
-    prompt += f"Generate a new, optimized **monthly budget allocation** (in RM and percentage) for the following standard categories. The total allocation MUST equal the Average Monthly Income (RM {analysis['avg_monthly_income']:.2f})."
+    prompt += f"Generate a new, optimized **monthly budget allocation** (in RM and percentage) for the following standard categories. The total allocation MUST equal the Average Monthly Income (RM {income:.2f})."
     prompt += "\n\nStandard Categories to allocate:"
     prompt += "\n1. Bills (must cover average 'Bills' and 'Rent' spending)"
     prompt += "\n2. Food (must cover average 'Groceries' and 'Dining Out' spending)"

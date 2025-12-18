@@ -114,7 +114,7 @@ export default function DrawerNavigator() {
           drawerIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="chart-line-variant" color={color} size={size} />
           ),
-          title: "AI Optimization",
+          title: "Portfolio Optimization",
         }}
       />
 

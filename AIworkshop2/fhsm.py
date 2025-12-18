@@ -2,17 +2,13 @@
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.preprocessing import MinMaxScaler
 from typing import List, Dict, Any, Tuple
 from datetime import datetime, date
 
-
 LOOKBACK_DAYS = 30
 FORECAST_DAYS = 30 
 np.random.seed(42)
-
 
 def classify_fhs(score: float) -> str:
     """Classifies the FHS into a rating category (0-100 scale)."""
@@ -26,8 +22,6 @@ def classify_fhs(score: float) -> str:
         return "Poor"
     else:
         return "Very Poor"
-
-
 
 def fetch_and_process_data(transactions: List[Dict[str, Any]]) -> pd.DataFrame:
     """
@@ -56,7 +50,6 @@ def fetch_and_process_data(transactions: List[Dict[str, Any]]) -> pd.DataFrame:
     
     date_range = pd.date_range(start=daily_summary["date"].min(), end=daily_summary["date"].max())
     daily_summary = daily_summary.set_index("date").reindex(date_range, fill_value=0).reset_index().rename(columns={'index':'date'})
-    
     
     daily_summary['balance'] = daily_summary['net_flow'].cumsum() 
     daily_summary = daily_summary.round(2)
@@ -117,23 +110,21 @@ def create_regression_features(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray
     
     return X_scaled, y, dates, feature_names, scaler_X
 
-
-
 def generate_fhs_report(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Main function to run the FHS calculation, model training, and forecasting.
-    Returns a dictionary suitable for JSON API response.
-    """
     try:
         daily_summary = fetch_and_process_data(transactions)
     except ValueError as e:
         return {"error": str(e)}
         
     if len(daily_summary) < LOOKBACK_DAYS + FORECAST_DAYS:
-        return {"error": f"Not enough historical data (only {len(daily_summary)} days) to run {LOOKBACK_DAYS}-day lookback and {FORECAST_DAYS}-day forecast."}
-
+        # 如果数据不够，不仅返回error，还可以返回一个默认的Mock FHS，防止前端挂掉
+        # 但这里保持原逻辑返回 error 也可以，main.py 已经处理了降级
+        return {"error": f"Not enough historical data ({len(daily_summary)} days). Need {LOOKBACK_DAYS + FORECAST_DAYS}."}
 
     X_scaled, y, dates, feature_names, scaler_X = create_regression_features(daily_summary)
+
+    if len(X_scaled) == 0:
+         return {"error": "Insufficient data after processing features."}
 
     model = LinearRegression()
     model.fit(X_scaled, y) 
@@ -142,7 +133,6 @@ def generate_fhs_report(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     forecast_fhs = []
     current_features_scaled = X_scaled[-1].reshape(1, -1)
-    
     
     current_income_avg = daily_summary['income'].tail(LOOKBACK_DAYS).mean()
     current_expense_avg = daily_summary['expense'].tail(LOOKBACK_DAYS).mean()
@@ -169,25 +159,31 @@ def generate_fhs_report(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
         
     future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=FORECAST_DAYS).tolist()
     
-    
     latest_actual_fhs = daily_summary['fhs'].iloc[-1]
-    latest_actual_rating = classify_fhs(latest_actual_fhs)
     
+    # === 关键修复：强制转换所有 numpy 类型为 float ===
     historical_results = [
-        {"date": date_obj.strftime("%Y-%m-%d"), "actual_fhs": round(actual, 2), "predicted_fhs": round(pred, 2)}
+        {
+            "date": date_obj.strftime("%Y-%m-%d"), 
+            "actual_fhs": float(round(actual, 2)), 
+            "predicted_fhs": float(round(pred, 2))
+        }
         for date_obj, actual, pred in zip(dates, y, historical_fhs_pred)
     ]
 
     forecast_results = [
-        {"date": date_obj.strftime("%Y-%m-%d"), "forecast_fhs": round(fhs, 2)}
+        {
+            "date": date_obj.strftime("%Y-%m-%d"), 
+            "forecast_fhs": float(round(fhs, 2))
+        }
         for date_obj, fhs in zip(future_dates, forecast_fhs)
     ]
     
     return {
         "summary": {
-            "latest_fhs": round(latest_actual_fhs, 2),
-            "latest_rating": latest_actual_rating,
-            "forecast_fhs": round(forecast_fhs[-1], 2),
+            "latest_fhs": float(round(latest_actual_fhs, 2)),
+            "latest_rating": classify_fhs(latest_actual_fhs),
+            "forecast_fhs": float(round(forecast_fhs[-1], 2)),
             "forecast_rating": classify_fhs(forecast_fhs[-1]),
             "model_notes": "Linear Regression based on 30-day rolling averages."
         },
