@@ -16,10 +16,10 @@ export const useTransactions = () => {
 // Helper: Get Icon
 const getCategoryIcon = (categoryName, categoriesList = []) => {
   if (categoriesList && categoriesList.length > 0) {
-      const cat = categoriesList.find(c => c.name === categoryName);
-      if (cat && cat.icon) return cat.icon;
+    const cat = categoriesList.find(c => c.name === categoryName);
+    if (cat && cat.icon) return cat.icon;
   }
-  
+
   const icons = {
     'Food': 'food', 'Transport': 'car', 'Shopping': 'cart', 'Bills': 'file-document',
     'Entertainment': 'movie', 'Healthcare': 'hospital', 'Education': 'school',
@@ -33,21 +33,21 @@ const getCategoryIcon = (categoryName, categoriesList = []) => {
 // Helper: Get Color
 const getCategoryColor = (categoryName, categoriesList = []) => {
   if (categoriesList && categoriesList.length > 0) {
-      const cat = categoriesList.find(c => c.name === categoryName);
-      if (cat && cat.color) return cat.color;
+    const cat = categoriesList.find(c => c.name === categoryName);
+    if (cat && cat.color) return cat.color;
   }
   const colors = {
-      'Food': '#FF6B6B', 'Transport': '#4ECDC4', 'Shopping': '#45B7D1',
-      'Bills': '#FFA07A', 'Entertainment': '#9B59B6', 'Housing': '#E67E22',
-      'Vehicle': '#95A5A6', 'Travel': '#3498DB', 'Education': '#F1C40F',
-      'Savings': '#FFD700', 'Other': '#808080'
+    'Food': '#FF6B6B', 'Transport': '#4ECDC4', 'Shopping': '#45B7D1',
+    'Bills': '#FFA07A', 'Entertainment': '#9B59B6', 'Housing': '#E67E22',
+    'Vehicle': '#95A5A6', 'Travel': '#3498DB', 'Education': '#F1C40F',
+    'Savings': '#FFD700', 'Other': '#808080'
   };
   return colors[categoryName] || '#808080';
 };
 
 export const TransactionProvider = ({ children }) => {
   const { isAuthenticated, idToken } = useAuth();
-  
+
   const [transactions, setTransactions] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [budgets, setBudgets] = useState([]);
@@ -60,7 +60,7 @@ export const TransactionProvider = ({ children }) => {
     if (isAuthenticated && idToken) {
       setAuthToken(idToken);
       console.log("TransactionContext: Loading all user data...");
-      
+
       loadAccounts();
       loadCategories();
       loadTransactions();
@@ -69,12 +69,12 @@ export const TransactionProvider = ({ children }) => {
     } else {
       // Logout cleanup
       setAccounts([]);
-      setTransactions([]); 
+      setTransactions([]);
       setBudgets([]);
       setGoals([]);
       setCategories([]);
     }
-  }, [isAuthenticated, idToken]); 
+  }, [isAuthenticated, idToken]);
 
 
   // --- Accounts ---
@@ -106,46 +106,46 @@ export const TransactionProvider = ({ children }) => {
   // --- Categories ---
   const loadCategories = async () => {
     try {
-        const data = await apiRequest('/categories/');
-        if (data && Array.isArray(data)) {
-            setCategories(data);
-        }
+      const data = await apiRequest('/categories/');
+      if (data && Array.isArray(data)) {
+        setCategories(data);
+      }
     } catch (error) {
-        console.error('Error loading categories:', error);
+      console.error('Error loading categories:', error);
     }
   };
 
   const addCategory = async (newCategory) => {
-      try {
-          const payload = {
-              name: newCategory.name,
-              type: newCategory.type === 'expense' ? 'Expense' : 'Income',
-              icon: newCategory.icon,
-              color: newCategory.color || "#" + Math.floor(Math.random()*16777215).toString(16)
-          };
-          const savedCategory = await apiRequest('/categories/', {
-              method: 'POST',
-              body: JSON.stringify(payload)
-          });
-          if (savedCategory) {
-              await loadCategories();
-              return true;
-          }
-      } catch (error) {
-          console.error("Error adding category:", error);
-          throw error;
+    try {
+      const payload = {
+        name: newCategory.name,
+        type: newCategory.type === 'expense' ? 'Expense' : 'Income',
+        icon: newCategory.icon,
+        color: newCategory.color || "#" + Math.floor(Math.random() * 16777215).toString(16)
+      };
+      const savedCategory = await apiRequest('/categories/', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (savedCategory) {
+        await loadCategories();
+        return true;
       }
+    } catch (error) {
+      console.error("Error adding category:", error);
+      throw error;
+    }
   };
 
   const deleteCategory = async (categoryId) => {
-      try {
-          await apiRequest(`/categories/${categoryId}`, { method: 'DELETE' });
-          setCategories(prev => prev.filter(c => c.id !== categoryId));
-          return true;
-      } catch (error) {
-          console.error("Error deleting category:", error);
-          throw error;
-      }
+    try {
+      await apiRequest(`/categories/${categoryId}`, { method: 'DELETE' });
+      setCategories(prev => prev.filter(c => c.id !== categoryId));
+      return true;
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      throw error;
+    }
   };
 
   // --- Transactions (FIXED) ---
@@ -162,10 +162,10 @@ export const TransactionProvider = ({ children }) => {
           // === 修复：安全处理日期 ===
           // 如果 transaction_date 存在，则转换；否则默认今天，防止崩溃
           date: tx.transaction_date ? new Date(tx.transaction_date) : new Date(),
-          
-          time: tx.transaction_time || "00:00", 
+
+          time: tx.transaction_time || "00:00",
           description: tx.merchant || 'Unknown',
-          icon: getCategoryIcon(tx.category, categories) 
+          icon: getCategoryIcon(tx.category, categories)
         }));
         setTransactions(formattedTransactions);
       } else {
@@ -180,13 +180,13 @@ export const TransactionProvider = ({ children }) => {
 
   const addTransaction = async (transaction) => {
     if (accounts.length === 0) {
-       console.error("No account found");
-       return;
+      console.error("No account found");
+      return;
     }
     const accountId = accounts[0].id;
     const payload = {
       transaction_date: transaction.date.toISOString().split('T')[0],
-      transaction_time: transaction.time || new Date().toTimeString().substring(0, 5), 
+      transaction_time: transaction.time || new Date().toTimeString().substring(0, 5),
       type: transaction.type === 'income' ? 'Income' : 'Expense',
       amount: parseFloat(transaction.amount),
       category: transaction.category,
@@ -202,7 +202,7 @@ export const TransactionProvider = ({ children }) => {
 
       if (savedTx) {
         const newTransaction = {
-          id: savedTx.id, 
+          id: savedTx.id,
           type: transaction.type,
           category: transaction.category,
           amount: payload.amount,
@@ -212,7 +212,7 @@ export const TransactionProvider = ({ children }) => {
           icon: getCategoryIcon(transaction.category, categories)
         };
         setTransactions(prev => [newTransaction, ...prev]);
-        
+
         if (transaction.type === 'expend') await loadBudgets();
       }
     } catch (error) {
@@ -237,7 +237,7 @@ export const TransactionProvider = ({ children }) => {
     // Optimistic Update
     const oldTransactions = [...transactions];
     setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
-    
+
     try {
       await apiRequest(`/transactions/${updatedTx.id}`, {
         method: 'PUT',
@@ -254,7 +254,7 @@ export const TransactionProvider = ({ children }) => {
     const oldTransactions = [...transactions];
     const targetTx = transactions.find(t => t.id === transactionId);
     setTransactions(prev => prev.filter(t => t.id !== transactionId));
-    
+
     try {
       await apiRequest(`/transactions/${transactionId}`, { method: 'DELETE' });
       if (targetTx && targetTx.type === 'expend') await loadBudgets();
@@ -275,7 +275,7 @@ export const TransactionProvider = ({ children }) => {
       setLoading(true);
       if (idToken) setAuthToken(idToken);
       const extractedTransactions = await apiUpload(`/transactions/vlm/extract/${accountId}`, formData);
-      
+
       if (extractedTransactions && Array.isArray(extractedTransactions)) {
         const formattedTransactions = extractedTransactions.map(tx => ({
           id: tx.id,
@@ -288,7 +288,7 @@ export const TransactionProvider = ({ children }) => {
           time: new Date().toTimeString().substring(0, 5)
         }));
         setTransactions(prev => [...formattedTransactions, ...prev]);
-        await loadBudgets(); 
+        await loadBudgets();
         return formattedTransactions.length;
       }
       return 0;
@@ -326,7 +326,7 @@ export const TransactionProvider = ({ children }) => {
           category: "Savings",
           progress: g.target_amount > 0 ? (g.current_saved / g.target_amount) : 0,
           completed: g.current_saved >= g.target_amount,
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }));
         setGoals(formattedGoals);
       }
@@ -350,14 +350,14 @@ export const TransactionProvider = ({ children }) => {
       if (savedGoal) {
         await loadGoals();
         if (payload.current_saved > 0) {
-            await addTransaction({
-                type: 'expend',
-                amount: payload.current_saved,
-                category: 'Savings',
-                date: new Date(),
-                time: new Date().toTimeString().substring(0, 5),
-                description: `Initial deposit for Goal: ${payload.name}`
-            });
+          await addTransaction({
+            type: 'expend',
+            amount: payload.current_saved,
+            category: 'Savings',
+            date: new Date(),
+            time: new Date().toTimeString().substring(0, 5),
+            description: `Initial deposit for Goal: ${payload.name}`
+          });
         }
         return true;
       }
@@ -368,57 +368,57 @@ export const TransactionProvider = ({ children }) => {
   };
 
   const deleteGoal = async (goalId) => {
-      try {
-          await apiRequest(`/goals/goal/${goalId}`, { method: 'DELETE' });
-          setGoals(prev => prev.filter(g => g.id !== goalId));
-          await loadTransactions(); // Refresh transactions (refunds)
-          return true;
-      } catch (error) {
-          console.error("Error deleting goal:", error);
-          throw error;
-      }
+    try {
+      await apiRequest(`/goals/goal/${goalId}`, { method: 'DELETE' });
+      setGoals(prev => prev.filter(g => g.id !== goalId));
+      await loadTransactions(); // Refresh transactions (refunds)
+      return true;
+    } catch (error) {
+      console.error("Error deleting goal:", error);
+      throw error;
+    }
   };
 
   const updateGoalProgress = async (goalId, amountToAdd) => {
-     const goalIndex = goals.findIndex(g => g.id === goalId);
-     if (goalIndex === -1) return;
-     
-     const oldGoals = [...goals];
-     const targetGoal = goals[goalIndex];
-     
-     setGoals(prev => prev.map(g => {
-         if (g.id === goalId) {
-             const newAmount = Math.max(0, g.currentAmount + amountToAdd);
-             return { 
-                 ...g, 
-                 currentAmount: newAmount, 
-                 progress: g.targetAmount > 0 ? newAmount / g.targetAmount : 0,
-                 completed: newAmount >= g.targetAmount
-             };
-         }
-         return g;
-     }));
-     
-     try {
-         await apiRequest(`/goals/goal/${goalId}/progress`, {
-             method: 'PUT',
-             body: JSON.stringify({ amount_change: amountToAdd })
-         });
+    const goalIndex = goals.findIndex(g => g.id === goalId);
+    if (goalIndex === -1) return;
 
-         await addTransaction({
-            type: amountToAdd > 0 ? 'expend' : 'income', 
-            amount: Math.abs(amountToAdd),
-            category: 'Savings',
-            date: new Date(),
-            time: new Date().toTimeString().substring(0, 5),
-            description: `${amountToAdd > 0 ? 'Deposit to' : 'Withdraw from'} Goal: ${targetGoal.title}`
-        });
-        
-     } catch (error) {
-         console.error("Failed to update goal:", error);
-         setGoals(oldGoals);
-         alert("Failed to update goal.");
-     }
+    const oldGoals = [...goals];
+    const targetGoal = goals[goalIndex];
+
+    setGoals(prev => prev.map(g => {
+      if (g.id === goalId) {
+        const newAmount = Math.max(0, g.currentAmount + amountToAdd);
+        return {
+          ...g,
+          currentAmount: newAmount,
+          progress: g.targetAmount > 0 ? newAmount / g.targetAmount : 0,
+          completed: newAmount >= g.targetAmount
+        };
+      }
+      return g;
+    }));
+
+    try {
+      await apiRequest(`/goals/goal/${goalId}/progress`, {
+        method: 'PUT',
+        body: JSON.stringify({ amount_change: amountToAdd })
+      });
+
+      await addTransaction({
+        type: amountToAdd > 0 ? 'expend' : 'income',
+        amount: Math.abs(amountToAdd),
+        category: 'Savings',
+        date: new Date(),
+        time: new Date().toTimeString().substring(0, 5),
+        description: `${amountToAdd > 0 ? 'Deposit to' : 'Withdraw from'} Goal: ${targetGoal.title}`
+      });
+
+    } catch (error) {
+      console.error("Failed to update goal:", error);
+      setGoals(oldGoals);
+      alert("Failed to update goal.");
+    }
   };
 
   // --- Budgets ---
@@ -427,17 +427,17 @@ export const TransactionProvider = ({ children }) => {
       const data = await apiRequest('/goals/budget');
       if (data && Array.isArray(data)) {
         const formattedBudgets = data.map(b => ({
-            id: b.id,
-            category: b.category,
-            allocated: b.limit_amount, 
-            period: b.period || 'Monthly', 
-            spent: b.current_spending,
-            remaining: b.remaining_budget,
-            color: getCategoryColor(b.category, categories),
-            weeklySafeLimit: (b.period === 'Weekly') 
-                ? Math.max(0, b.remaining_budget) 
-                : Math.max(0, b.daily_spending_limit * 7),
-            dailyLimit: b.daily_spending_limit 
+          id: b.id,
+          category: b.category,
+          allocated: b.limit_amount,
+          period: b.period || 'Monthly',
+          spent: b.current_spending,
+          remaining: b.remaining_budget,
+          color: getCategoryColor(b.category, categories),
+          weeklySafeLimit: (b.period === 'Weekly')
+            ? Math.max(0, b.remaining_budget)
+            : Math.max(0, b.daily_spending_limit * 7),
+          dailyLimit: b.daily_spending_limit
         }));
         setBudgets(formattedBudgets);
       }
@@ -448,60 +448,60 @@ export const TransactionProvider = ({ children }) => {
 
   const addBudget = async (newBudget) => {
     try {
-        const payload = {
-            name: newBudget.category + " Budget",
-            category: newBudget.category,
-            limit_amount: parseFloat(newBudget.allocated),
-            period: newBudget.period // "Monthly" or "Weekly"
-        };
-        
-        const savedBudget = await apiRequest('/goals/budget', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
+      const payload = {
+        name: newBudget.category + " Budget",
+        category: newBudget.category,
+        limit_amount: parseFloat(newBudget.allocated),
+        period: newBudget.period // "Monthly" or "Weekly"
+      };
 
-        if (savedBudget) {
-            await loadBudgets();
-            return true;
-        }
+      const savedBudget = await apiRequest('/goals/budget', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      if (savedBudget) {
+        await loadBudgets();
+        return true;
+      }
     } catch (error) {
-        console.error('Error creating budget:', error);
-        throw error;
+      console.error('Error creating budget:', error);
+      throw error;
     }
   };
 
   const updateBudget = async (budgetID, updatedData) => {
-        try {
-            const payload = {
-                name: updatedData.category + " Budget",
-                category: updatedData.category,
-                limit_amount: parseFloat(updatedData.allocated),
-                period: updatedData.period
-            };
+    try {
+      const payload = {
+        name: updatedData.category + " Budget",
+        category: updatedData.category,
+        limit_amount: parseFloat(updatedData.allocated),
+        period: updatedData.period
+      };
 
-            await apiRequest(`/goals/budget/${budgetID}`, {
-                method: 'PUT',
-                body: JSON.stringify(payload)
-            });
+      await apiRequest(`/goals/budget/${budgetID}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
 
-            await loadBudgets();
-            return true;
-        } catch (error) {
-            console.error("Error updating budget:", error);
-            throw error;
-        }
-    };
+      await loadBudgets();
+      return true;
+    } catch (error) {
+      console.error("Error updating budget:", error);
+      throw error;
+    }
+  };
 
   // Delete Budget
   const deleteBudget = async (budgetId) => {
-      try {
-          await apiRequest(`/goals/budget/${budgetId}`, { method: 'DELETE' });
-          setBudgets(prev => prev.filter(b => b.id !== budgetId));
-          return true;
-      } catch (error) {
-          console.error("Error deleting budget:", error);
-          throw error;
-      }
+    try {
+      await apiRequest(`/goals/budget/${budgetId}`, { method: 'DELETE' });
+      setBudgets(prev => prev.filter(b => b.id !== budgetId));
+      return true;
+    } catch (error) {
+      console.error("Error deleting budget:", error);
+      throw error;
+    }
   };
 
   // --- Getter Functions (Derived State) ---
@@ -512,7 +512,7 @@ export const TransactionProvider = ({ children }) => {
     const spent = budgets.reduce((s, b) => s + (b.spent || 0), 0);
     return { totalBudget: total, totalSpent: spent, progress: total > 0 ? Math.min(spent / total, 1) : 0, remaining: Math.max(total - spent, 0) };
   };
-  
+
   const getCurrentBalance = () => {
     const income = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const expend = transactions.filter(t => t.type === 'expend').reduce((s, t) => s + t.amount, 0);
@@ -521,7 +521,7 @@ export const TransactionProvider = ({ children }) => {
 
   const getTransactionsByDateRange = (start, end) => transactions.filter(t => new Date(t.date) >= start && new Date(t.date) <= end);
   const getTransactionsByCategory = (cat) => transactions.filter(t => t.category === cat);
-  
+
   const getMonthlySummary = (year, month) => {
     const monthly = transactions.filter(t => { const d = new Date(t.date); return d.getFullYear() === year && d.getMonth() === month; });
     const income = monthly.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
@@ -545,36 +545,45 @@ export const TransactionProvider = ({ children }) => {
     const lq = q.toLowerCase();
     return transactions.filter(t => t.description.toLowerCase().includes(lq) || t.category.toLowerCase().includes(lq) || t.amount.toString().includes(lq));
   };
-  
+
   // Mock for compatibility
-  const clearAllTransactions = () => {}; 
-  const addGoalTransaction = () => {}; 
+  const clearAllTransactions = () => { };
+  const addGoalTransaction = () => { };
 
   const getIconForCategory = (catName) => getCategoryIcon(catName, categories);
 
   const value = {
     // State
     transactions, accounts, budgets, goals, categories, loading, calendarEvents,
-    
+
     // Core Actions
     loadAccounts, uploadReceipt, addTransaction,
 
     // Calendar Actions
-    loadCalendarEvents, 
-    
+    loadCalendarEvents,
+
     // Goal Actions
     loadGoals, addGoal, updateGoalProgress, deleteGoal,
-    
+
     // Budget Actions
     loadBudgets, addBudget, updateBudget, deleteBudget, getBudgetByCategory, getTotalBudgetProgress,
 
     // Categories Actions
     loadCategories, addCategory, deleteCategory,
-    
+
     // Helpers / Legacy
     updateTransaction, deleteTransaction, clearAllTransactions,
     addGoalTransaction, getCurrentBalance, getTransactionsByDateRange, getTransactionsByCategory,
     getMonthlySummary, getCategorySpending, getRecentTransactions, searchTransactions,
+    getMonthlyBalance: async (year, month) => {
+      try {
+        const data = await apiRequest(`/accounts/balance/monthly?year=${year}&month=${month}`);
+        return data ? data.balance : 0;
+      } catch (error) {
+        console.error("Error fetching monthly balance:", error);
+        return 0;
+      }
+    },
     getCategoryIcon: getIconForCategory
   };
 

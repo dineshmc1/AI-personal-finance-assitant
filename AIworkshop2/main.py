@@ -1,5 +1,5 @@
-# AI workshop 2/main.py
 import firebase_admin
+print("DEBUG: MAIN.PY LOADED SUCCESSFULLY", flush=True)
 from firebase_admin import initialize_app, credentials, firestore, auth, storage 
 from models import Transaction, TransactionDB, AccountDB, UserSignup
 from vlm import extract_transactions_from_data, VLMTransaction 
@@ -11,6 +11,8 @@ from datetime import date
 import base64
 import time
 from pathlib import Path as PathLib
+from accounts import update_monthly_balance
+
 from accounts import accounts_router, update_account_balance 
 from auth_deps import get_current_user_id 
 from goals import goals_router
@@ -28,6 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import datetime
 from categories import categories_router
 import traceback
+from balance_manager import get_average_balance_last_3_months, recalculate_user_history
 
 FIREBASE_CREDENTIAL_PATH = './serviceAccountKey.json'
 FIREBASE_STORAGE_BUCKET = "ai-personal-finance-assi-bdf76.firebasestorage.app" 
@@ -58,6 +61,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+@app.on_event("startup")
+async def startup_event():
+    print("DEBUG: Routes registered:", flush=True)
+    for route in app.routes:
+        if hasattr(route, "path"):
+            print(f"DEBUG: Route: {route.path}", flush=True)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -87,9 +97,15 @@ def check_account_ownership(user_id: str, account_id: str, db: Any):
     if account_doc.to_dict().get("user_id") != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account does not belong to the user.")
 
+@app.post("/debug/recalculate-balances")
+async def debug_recalculate_balances(user_id: Annotated[str, Depends(get_current_user_id)]):
+    db = get_db()
+    if not db: return {"error": "DB unavailable"}
+    return await recalculate_user_history(user_id, db)
+
 @app.get("/", tags=["Health"])
 async def root():
-    return {"message": "AI Personal Finance Assistant API is Running!", "status": "OK"}
+    return {"message": "AI Personal Finance Assistant API is Running! [DEBUG_MODE_ACTIVE]", "status": "OK"}
 
 @app.post("/auth/signup", status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserSignup):
@@ -147,6 +163,7 @@ async def create_manual_transaction(
         
         is_income = transaction_data.type == "Income"
         update_account_balance(transaction_data.account_id, transaction_data.amount, is_income, db)
+        update_monthly_balance(user_id, transaction_data.transaction_date, transaction_data.amount, is_income, db)
         
         return TransactionDB(id=doc_ref[1].id, **transaction_dict)
 
@@ -203,6 +220,16 @@ async def extract_and_save_vlm_transactions(
             
             is_income = vlm_tx['type'] == "Income"
             update_account_balance(account_id, vlm_tx['amount'], is_income, db)
+            
+            # Parse date for monthly balance
+            try:
+                if isinstance(vlm_tx['date'], str):
+                     tx_date = datetime.date.fromisoformat(vlm_tx['date'])
+                else:
+                     tx_date = vlm_tx['date']
+                update_monthly_balance(user_id, tx_date, vlm_tx['amount'], is_income, db)
+            except Exception as e:
+                print(f"Error parsing date for monthly balance in VLM: {e}")
 
         batch.commit()
         
@@ -310,80 +337,7 @@ async def get_total_current_balance(user_id: str, db: firestore.client) -> float
         print(f"Error fetching total balance: {e}")
         return 0.0
 
-@app.get("/reports/optimization/rl")
-async def get_rl_optimization_report(
-    user_id: Annotated[str, Depends(get_current_user_id)],
-):
-    db = get_db()
-    if not db:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
-    try:
-        # 1. Fetch User Transactions
-        transactions_ref = db.collection('transactions').where("user_id", "==", user_id).order_by("transaction_date")
-        docs = transactions_ref.stream()
-        transactions = [doc.to_dict() for doc in docs]
-        
-        # 2. Check for empty data (Empty State)
-        if len(transactions) == 0:
-             raise HTTPException(status_code=404, detail="NO_TRANSACTIONS")
-
-        # 3. Calculate FHS and LSTM (with fallbacks for new users)
-        latest_fhs_score = 50.0 # Default: Balanced
-        monthly_contribution = 100.0 # Default: Small investment
-        
-        # Try FHS
-        fhs_report = generate_fhs_report(transactions)
-        if "summary" in fhs_report:
-            latest_fhs_score = fhs_report['summary']['latest_fhs']
-        else:
-            print(f"Not enough data for FHS ({len(transactions)} txns), using default 50.0")
-
-        # Try LSTM
-        lstm_report = generate_lstm_forecast(transactions)
-        if "summary" in lstm_report:
-            net_flow = lstm_report['summary']['net_flow_forecast']
-            monthly_contribution = max(100.0, net_flow)
-        else:
-            print("Not enough data for LSTM, using default contribution 100.0")
-
-        # Get Current Balance
-        starting_balance = await get_total_current_balance(user_id, db)
-        if starting_balance <= 0:
-             starting_balance = 1000.0 # Default for demo if balance is 0
-        
-        # 4. Fetch REAL Market Data (Yahoo Finance)
-        try:
-            returns_df = fetch_asset_data(TICKERS)
-        except Exception as e:
-             print(f"Yahoo Finance API failed: {e}. Using mock market data.")
-             # Fallback: Generate mock market data if Yahoo fails (e.g. no internet)
-             import pandas as pd
-             import numpy as np
-             dates = pd.date_range(start='2020-01-01', periods=1000)
-             mock_data = np.random.normal(0.0005, 0.01, (1000, len(TICKERS))) 
-             returns_df = pd.DataFrame(mock_data, index=dates, columns=list(TICKERS.keys()))
-
-        # 5. Run RL Optimization
-        rl_report = generate_rl_optimization_report(
-            latest_fhs=latest_fhs_score, 
-            starting_balance=starting_balance, 
-            monthly_contribution=monthly_contribution,
-            returns_df=returns_df 
-        )
-        
-        if "error" in rl_report:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=rl_report["error"])
-        
-        return rl_report
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Unexpected error during RL report generation: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred during portfolio optimization.")
 
 # === ASYNC WRAPPERS FOR SIMULATION ===
 async def async_get_fhs_report_internal(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -584,6 +538,19 @@ async def delete_transaction(
         
         if account_id:
             update_account_balance(account_id, transaction_data.get('amount', 0), not is_income, db)
+
+        # Update Monthly Balance (Inverse)
+        try:
+             tx_date_raw = transaction_data.get('transaction_date')
+             if isinstance(tx_date_raw, str):
+                  tx_date = datetime.date.fromisoformat(tx_date_raw)
+             else:
+                  tx_date = tx_date_raw
+                  
+             if tx_date:
+                  update_monthly_balance(user_id, tx_date, transaction_data.get('amount', 0), not is_income, db)
+        except Exception as e:
+             print(f"Error updating monthly balance during delete: {e}")
             
         doc_ref.delete()
         
@@ -641,6 +608,23 @@ async def update_transaction(
         if new_account_id:
             update_account_balance(new_account_id, new_amount, new_is_income, db)
             
+        # Update Monthly Balance
+        try:
+             # Reverse Old
+             old_date_raw = old_data.get('transaction_date')
+             if isinstance(old_date_raw, str):
+                  old_date = datetime.date.fromisoformat(old_date_raw)
+             else:
+                  old_date = old_date_raw
+             if old_date:
+                  update_monthly_balance(user_id, old_date, old_amount, not old_is_income, db)
+             
+             # Apply New
+             new_date = transaction_update.transaction_date # Already a date object from pydantic
+             update_monthly_balance(user_id, new_date, new_amount, new_is_income, db)
+        except Exception as e:
+             print(f"Error updating monthly balance during update: {e}")
+
         return TransactionDB(id=transaction_id, **new_data)
         
     except HTTPException:
@@ -946,93 +930,7 @@ async def get_lstm_forecast_report(
         print(f"Unexpected error during LSTM report generation: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred during financial forecast.")
 
-async def get_total_current_balance(user_id: str, db: firestore.client) -> float:
-    try:
-        accounts_ref = db.collection('accounts').where("user_id", "==", user_id)
-        docs = accounts_ref.stream()
-        total_balance = 0.0
-        for doc in docs:
-            account_data = doc.to_dict()
-            total_balance += account_data.get('current_balance', 0.0)
-        return total_balance
-    except Exception as e:
-        print(f"Error fetching total balance: {e}")
-        return 0.0
 
-@app.get("/reports/optimization/rl")
-async def get_rl_optimization_report(
-    user_id: Annotated[str, Depends(get_current_user_id)],
-):
-    db = get_db()
-    if not db:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
-
-    try:
-        # 1. Fetch User Transactions
-        transactions_ref = db.collection('transactions').where("user_id", "==", user_id).order_by("transaction_date")
-        docs = transactions_ref.stream()
-        transactions = [doc.to_dict() for doc in docs]
-        
-        # 2. Check for empty data (Empty State)
-        if len(transactions) == 0:
-             raise HTTPException(status_code=404, detail="NO_TRANSACTIONS")
-
-        # 3. Calculate FHS and LSTM (with fallbacks for new users)
-        latest_fhs_score = 50.0 # Default: Balanced
-        monthly_contribution = 100.0 # Default: Small investment
-        
-        # Try FHS
-        fhs_report = generate_fhs_report(transactions)
-        if "summary" in fhs_report:
-            latest_fhs_score = fhs_report['summary']['latest_fhs']
-        else:
-            print(f"Not enough data for FHS ({len(transactions)} txns), using default 50.0")
-
-        # Try LSTM
-        lstm_report = generate_lstm_forecast(transactions)
-        if "summary" in lstm_report:
-            net_flow = lstm_report['summary']['net_flow_forecast']
-            monthly_contribution = max(100.0, net_flow)
-        else:
-            print("Not enough data for LSTM, using default contribution 100.0")
-
-        # Get Current Balance
-        starting_balance = await get_total_current_balance(user_id, db)
-        if starting_balance <= 0:
-             starting_balance = 1000.0 # Default for demo if balance is 0
-        
-        # 4. Fetch REAL Market Data (Yahoo Finance)
-        try:
-            returns_df = fetch_asset_data(TICKERS)
-        except Exception as e:
-             print(f"Yahoo Finance API failed: {e}. Using mock market data.")
-             # Fallback: Generate mock market data if Yahoo fails (e.g. no internet)
-             import pandas as pd
-             import numpy as np
-             dates = pd.date_range(start='2020-01-01', periods=1000)
-             mock_data = np.random.normal(0.0005, 0.01, (1000, len(TICKERS))) 
-             returns_df = pd.DataFrame(mock_data, index=dates, columns=list(TICKERS.keys()))
-
-        # 5. Run RL Optimization
-        rl_report = generate_rl_optimization_report(
-            latest_fhs=latest_fhs_score, 
-            starting_balance=starting_balance, 
-            monthly_contribution=monthly_contribution,
-            returns_df=returns_df 
-        )
-        
-        if "error" in rl_report:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=rl_report["error"])
-        
-        return rl_report
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Unexpected error during RL report generation: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred during portfolio optimization.")
 
 # === ASYNC WRAPPERS FOR SIMULATION ===
 async def async_get_fhs_report_internal(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1102,6 +1000,117 @@ async def simulate_user_question(
              "error_debug": str(e)
         }
     
+
+async def get_total_current_balance(user_id: str, db: Any) -> float:
+    try:
+        accounts_ref = db.collection('accounts').where("user_id", "==", user_id)
+        docs = accounts_ref.stream()
+        total_balance = 0.0
+        for doc in docs:
+            account_data = doc.to_dict()
+            total_balance += account_data.get('current_balance', 0.0)
+        return total_balance
+    except Exception as e:
+        print(f"Error fetching total balance: {e}")
+        return 0.0
+
+@app.get("/reports/optimization/rl")
+async def get_rl_optimization_report(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    included_assets: Optional[str] = Query(None, description="Comma-separated list of assets to include, e.g., 'Crypto,Stocks'")
+):
+    print(f"DEBUG: Entered get_rl_optimization_report with assets={included_assets}", flush=True)
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
+
+    try:
+        # 1. Fetch User Transactions
+        transactions_ref = db.collection('transactions').where("user_id", "==", user_id).order_by("transaction_date")
+        docs = transactions_ref.stream()
+        transactions = [doc.to_dict() for doc in docs]
+        
+        # 2. Check for empty data (Empty State)
+        if len(transactions) == 0:
+             raise HTTPException(status_code=404, detail="NO_TRANSACTIONS")
+
+        # 3. Calculate FHS (with fallback)
+        latest_fhs_score = 50.0 
+        fhs_report = generate_fhs_report(transactions)
+        if "summary" in fhs_report:
+            latest_fhs_score = fhs_report['summary']['latest_fhs']
+
+        try:
+           print(f"DEBUG_RL_REPORT: User ID: {user_id}", flush=True)
+           monthly_contribution = await get_average_balance_last_3_months(user_id, db)
+           print(f"DEBUG_RL_REPORT: Raw Monthly Contribution from DB: {monthly_contribution}", flush=True)
+           
+           if monthly_contribution <= 0:
+               monthly_contribution = 100.0
+           print(f"DEBUG_RL_REPORT: Final Monthly Contribution Used: {monthly_contribution}", flush=True)
+        except Exception as e:
+            print(f"Error fetching monthly contribution: {e}", flush=True)
+            monthly_contribution = 100.0
+
+        # Get Current Balance
+        user_doc = db.collection('users').document(user_id).get()
+        if user_doc.exists and user_doc.to_dict().get('total_balance'):
+             starting_balance = float(user_doc.to_dict().get('total_balance'))
+        else:
+             starting_balance = await get_total_current_balance(user_id, db)
+             
+        if starting_balance <= 0:
+             starting_balance = 1000.0
+        
+        # 4. Fetch REAL Market Data (Yahoo Finance)
+        print(f"DEBUG_RL_REPORT: Included Assets Query Param: '{included_assets}'", flush=True)
+        if included_assets:
+            selected_keys = [k.strip() for k in included_assets.split(',') if k.strip() in TICKERS]
+            print(f"DEBUG_RL_REPORT: Parsed Selected Keys: {selected_keys}", flush=True)
+            
+            if not selected_keys:
+                 print("DEBUG_RL_REPORT: No valid keys found, falling back to all assets.", flush=True)
+                 target_tickers = TICKERS 
+            else:
+                 target_tickers = {k: TICKERS[k] for k in selected_keys}
+        else:
+            print("DEBUG_RL_REPORT: No assets specified, using ALL.", flush=True)
+            target_tickers = TICKERS
+            
+        print(f"DEBUG_RL_REPORT: Target Tickers for Fetch: {list(target_tickers.keys())}", flush=True)
+
+        try:
+            returns_df = fetch_asset_data(target_tickers)
+        except Exception as e:
+             print(f"Yahoo Finance API failed: {e}. Using mock market data.")
+             # Fallback
+             import pandas as pd
+             import numpy as np
+             dates = pd.date_range(start='2020-01-01', periods=1000)
+             mock_data = np.random.normal(0.0005, 0.01, (1000, len(target_tickers))) 
+             returns_df = pd.DataFrame(mock_data, index=dates, columns=list(target_tickers.keys()))
+
+        # 5. Run RL Optimization
+        rl_report = generate_rl_optimization_report(
+            latest_fhs=latest_fhs_score, 
+            starting_balance=starting_balance, 
+            monthly_contribution=monthly_contribution,
+            returns_df=returns_df 
+        )
+        
+        if "error" in rl_report:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=rl_report["error"])
+        
+        return rl_report
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error during RL report generation: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred during portfolio optimization.")
+
 @app.get("/reports/recurring")
 async def get_recurring_payments(
     user_id: Annotated[str, Depends(get_current_user_id)]

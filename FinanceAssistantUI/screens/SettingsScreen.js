@@ -1,12 +1,12 @@
 // screens/SettingsScreen.js
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Switch, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
   Alert,
   Modal,
   TextInput,
@@ -15,6 +15,7 @@ import {
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTransactions } from "../contexts/TransactionContext";
+import { useSettings } from "../contexts/SettingsContext";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -22,12 +23,13 @@ import * as Sharing from 'expo-sharing';
 export default function SettingsScreen() {
   const { colors } = useTheme();
   const { transactions, clearAllTransactions } = useTransactions();
-  
+
   const [settings, setSettings] = useState({
     // App Settings
     darkMode: false,
     biometricAuth: false,
-    currency: "MYR",
+    darkMode: false,
+    biometricAuth: false,
     budgetAlerts: true,
     autoBackup: true,
   });
@@ -36,24 +38,31 @@ export default function SettingsScreen() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [newCurrency, setNewCurrency] = useState("MYR");
+  const { currency, updateCurrency: setGlobalCurrency } = useSettings();
+  const [newCurrency, setNewCurrency] = useState(currency);
+
+  const handleChangeCurrency = async () => {
+    await setGlobalCurrency(newCurrency);
+    setShowCurrencyModal(false);
+    Alert.alert("Success", `Currency changed to ${newCurrency}`);
+  };
 
   const toggleSetting = (setting) => {
-    setSettings({...settings, [setting]: !settings[setting]});
+    setSettings({ ...settings, [setting]: !settings[setting] });
   };
 
   // Export transactions as CSV
   const handleExportData = async () => {
     try {
       setIsExporting(true);
-      
+
       // Create CSV content
       let csvContent = "Date,Time,Type,Category,Amount,Description\n";
-      
+
       transactions.forEach(transaction => {
         const date = new Date(transaction.date).toISOString().split('T')[0];
         const amount = transaction.type === 'expend' ? -transaction.amount : transaction.amount;
-        
+
         csvContent += `"${date}","${transaction.time}","${transaction.type}","${transaction.category}","${amount}","${transaction.description}"\n`;
       });
 
@@ -85,10 +94,10 @@ export default function SettingsScreen() {
   const handleClearData = async () => {
     try {
       setIsResetting(true);
-      
+
       // Clear transactions from context
       clearAllTransactions();
-      
+
       // Clear any stored data
       await AsyncStorage.multiRemove([
         'transactions',
@@ -99,7 +108,7 @@ export default function SettingsScreen() {
 
       Alert.alert("Success", "All data has been cleared successfully!");
       setShowResetModal(false);
-      
+
     } catch (error) {
       console.error('Clear data error:', error);
       Alert.alert("Error", "Failed to clear data. Please try again.");
@@ -108,12 +117,7 @@ export default function SettingsScreen() {
     }
   };
 
-  // Change currency
-  const handleChangeCurrency = () => {
-    setSettings({...settings, currency: newCurrency});
-    setShowCurrencyModal(false);
-    Alert.alert("Success", `Currency changed to ${newCurrency}`);
-  };
+
 
   // App information
   const getAppStats = () => {
@@ -124,7 +128,7 @@ export default function SettingsScreen() {
     const totalExpenses = transactions
       .filter(t => t.type === 'expend')
       .reduce((sum, t) => sum + t.amount, 0);
-    
+
     return { totalTransactions, totalIncome, totalExpenses };
   };
 
@@ -236,13 +240,13 @@ export default function SettingsScreen() {
       {/* Currency Selection */}
       <View style={[styles.currencySection, { backgroundColor: colors.surface }]}>
         <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Currency</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.currencyButton, { borderColor: colors.primary }]}
           onPress={() => setShowCurrencyModal(true)}
         >
           <MaterialCommunityIcons name="currency-usd" size={20} color={colors.primary} />
           <Text style={[styles.currencyText, { color: colors.onSurface }]}>
-            {settings.currency} - {currencyOptions.find(c => c.code === settings.currency)?.name}
+            {currency} - {currencyOptions.find(c => c.code === currency)?.name}
           </Text>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
         </TouchableOpacity>
@@ -255,13 +259,13 @@ export default function SettingsScreen() {
             <MaterialCommunityIcons name={section.icon} size={20} color={colors.primary} />
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{section.title}</Text>
           </View>
-          
+
           <View style={styles.sectionContent}>
             {section.items.map((item, itemIndex) => (
               <TouchableOpacity
                 key={itemIndex}
                 style={[
-                  styles.settingItem, 
+                  styles.settingItem,
                   { backgroundColor: colors.surface },
                   item.destructive && { borderLeftColor: '#F44336', borderLeftWidth: 4 }
                 ]}
@@ -269,14 +273,14 @@ export default function SettingsScreen() {
                 disabled={item.loading}
               >
                 <View style={styles.settingLeft}>
-                  <MaterialCommunityIcons 
-                    name={item.icon} 
-                    size={22} 
-                    color={item.destructive ? '#F44336' : colors.primary} 
+                  <MaterialCommunityIcons
+                    name={item.icon}
+                    size={22}
+                    color={item.destructive ? '#F44336' : colors.primary}
                   />
                   <View style={styles.settingInfo}>
                     <Text style={[
-                      styles.settingLabel, 
+                      styles.settingLabel,
                       { color: item.destructive ? '#F44336' : colors.onSurface }
                     ]}>
                       {item.label}
@@ -286,15 +290,15 @@ export default function SettingsScreen() {
                     </Text>
                   </View>
                 </View>
-                
+
                 {item.type === 'action' ? (
                   item.loading ? (
                     <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <MaterialCommunityIcons 
-                      name="chevron-right" 
-                      size={20} 
-                      color={item.destructive ? '#F44336' : colors.onSurface} 
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={20}
+                      color={item.destructive ? '#F44336' : colors.onSurface}
                     />
                   )
                 ) : (
@@ -314,17 +318,17 @@ export default function SettingsScreen() {
       {/* App Information */}
       <View style={[styles.infoSection, { backgroundColor: colors.surface }]}>
         <Text style={[styles.infoTitle, { color: colors.onSurface }]}>App Information</Text>
-        
+
         <View style={styles.infoItem}>
           <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Version</Text>
           <Text style={[styles.infoValue, { color: colors.primary }]}>1.0.0</Text>
         </View>
-        
+
         <View style={styles.infoItem}>
           <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Build Date</Text>
           <Text style={[styles.infoValue, { color: colors.primary }]}>March 2024</Text>
         </View>
-        
+
         <View style={styles.infoItem}>
           <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Developer</Text>
           <Text style={[styles.infoValue, { color: colors.primary }]}>Finance Assistant Team</Text>
@@ -348,7 +352,7 @@ export default function SettingsScreen() {
                   key={currency.code}
                   style={[
                     styles.currencyOption,
-                    { 
+                    {
                       backgroundColor: newCurrency === currency.code ? colors.primary + '20' : 'transparent',
                       borderColor: colors.outline
                     }
@@ -371,13 +375,13 @@ export default function SettingsScreen() {
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.surface }]}
                 onPress={() => setShowCurrencyModal(false)}
               >
                 <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.primary }]}
                 onPress={handleChangeCurrency}
               >
@@ -412,14 +416,14 @@ export default function SettingsScreen() {
             </Text>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.surface }]}
                 onPress={() => setShowResetModal(false)}
                 disabled={isResetting}
               >
                 <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: '#F44336' }]}
                 onPress={handleClearData}
                 disabled={isResetting}
@@ -441,120 +445,120 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 15 },
   title: { fontSize: 24, fontWeight: "bold", textAlign: "center", marginVertical: 15 },
-  
+
   // Stats Card
-  statsCard: { 
-    borderRadius: 12, 
-    padding: 20, 
+  statsCard: {
+    borderRadius: 12,
+    padding: 20,
     marginBottom: 20,
-    elevation: 3 
+    elevation: 3
   },
-  statsTitle: { 
-    fontSize: 18, 
-    fontWeight: "bold", 
-    marginBottom: 15 
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 15
   },
-  statsGrid: { 
-    flexDirection: "row", 
-    justifyContent: "space-between" 
+  statsGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between"
   },
-  statItem: { 
-    alignItems: "center", 
-    flex: 1 
+  statItem: {
+    alignItems: "center",
+    flex: 1
   },
-  statNumber: { 
-    fontSize: 16, 
-    fontWeight: "bold", 
-    marginTop: 8 
+  statNumber: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginTop: 8
   },
-  statLabel: { 
-    fontSize: 12, 
+  statLabel: {
+    fontSize: 12,
     marginTop: 4,
-    textAlign: "center" 
+    textAlign: "center"
   },
-  
+
   // Currency Section
-  currencySection: { 
-    borderRadius: 12, 
-    padding: 20, 
+  currencySection: {
+    borderRadius: 12,
+    padding: 20,
     marginBottom: 20,
-    elevation: 3 
+    elevation: 3
   },
-  currencyButton: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    padding: 15, 
-    borderRadius: 8, 
+  currencyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    borderRadius: 8,
     borderWidth: 1,
-    marginTop: 10 
+    marginTop: 10
   },
-  currencyText: { 
-    flex: 1, 
-    fontSize: 16, 
-    marginLeft: 10 
+  currencyText: {
+    flex: 1,
+    fontSize: 16,
+    marginLeft: 10
   },
-  
+
   // Settings Sections
   section: { marginBottom: 25 },
-  sectionHeader: { 
-    flexDirection: "row", 
-    alignItems: "center", 
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 15,
-    paddingHorizontal: 5 
+    paddingHorizontal: 5
   },
-  sectionTitle: { 
-    fontSize: 18, 
-    fontWeight: "bold", 
-    marginLeft: 10 
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginLeft: 10
   },
   sectionContent: { borderRadius: 12, overflow: "hidden" },
-  settingItem: { 
-    flexDirection: "row", 
-    alignItems: "center", 
+  settingItem: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    padding: 15, 
+    padding: 15,
     marginBottom: 1,
-    elevation: 2 
+    elevation: 2
   },
   settingLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1
   },
-  settingInfo: { 
-    flex: 1, 
-    marginLeft: 15 
+  settingInfo: {
+    flex: 1,
+    marginLeft: 15
   },
-  settingLabel: { 
-    fontSize: 16, 
-    fontWeight: "600", 
-    marginBottom: 2 
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 2
   },
-  settingDescription: { 
-    fontSize: 12, 
-    opacity: 0.7 
+  settingDescription: {
+    fontSize: 12,
+    opacity: 0.7
   },
-  
+
   // Info Section
-  infoSection: { 
-    borderRadius: 12, 
-    padding: 20, 
+  infoSection: {
+    borderRadius: 12,
+    padding: 20,
     marginBottom: 20,
-    elevation: 3 
+    elevation: 3
   },
-  infoTitle: { 
-    fontSize: 18, 
-    fontWeight: "bold", 
-    marginBottom: 15 
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 15
   },
-  infoItem: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    marginBottom: 12 
+  infoItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12
   },
   infoLabel: { fontSize: 14 },
   infoValue: { fontSize: 14, fontWeight: "500" },
-  
+
   // Modal Styles
   modalOverlay: {
     flex: 1,
@@ -598,7 +602,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold'
   },
-  
+
   // Currency List
   currencyList: {
     maxHeight: 300

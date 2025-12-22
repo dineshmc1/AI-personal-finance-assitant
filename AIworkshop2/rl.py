@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import datetime
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, Annotated
 import gymnasium as gym
 from gymnasium import spaces
 from stable_baselines3 import PPO
@@ -12,6 +12,124 @@ from stable_baselines3.common.callbacks import BaseCallback
 import torch
 import os
 import json 
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from firebase_admin import firestore
+from auth_deps import get_current_user_id
+from balance_manager import get_average_balance_last_3_months
+from fhsm import generate_fhs_report 
+from lstm import generate_lstm_forecast
+
+rl_router = APIRouter(
+    prefix="/reports/optimization",
+    tags=["RL Optimization"]
+)
+
+async def get_total_current_balance(user_id: str, db: firestore.client) -> float:
+    try:
+        accounts_ref = db.collection('accounts').where("user_id", "==", user_id)
+        docs = accounts_ref.stream()
+        total_balance = 0.0
+        for doc in docs:
+            account_data = doc.to_dict()
+            total_balance += account_data.get('current_balance', 0.0)
+        return total_balance
+    except Exception as e:
+        print(f"Error fetching total balance: {e}")
+        return 0.0
+
+@rl_router.get("/rl")
+async def get_rl_optimization_report(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    included_assets: Optional[str] = Query(None, description="Comma-separated list of assets to include, e.g., 'Crypto,Stocks'")
+):
+    print(f"DEBUG_ROUTER: Entered get_rl_optimization_report with assets={included_assets}", flush=True)
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
+
+    try:
+        # 1. Fetch User Transactions
+        transactions_ref = db.collection('transactions').where("user_id", "==", user_id).order_by("transaction_date")
+        docs = transactions_ref.stream()
+        transactions = [doc.to_dict() for doc in docs]
+        
+        # 2. Check for empty data (Empty State)
+        if len(transactions) == 0:
+             raise HTTPException(status_code=404, detail="NO_TRANSACTIONS")
+
+        # 3. Calculate FHS (with fallback)
+        latest_fhs_score = 50.0 
+        fhs_report = generate_fhs_report(transactions)
+        if "summary" in fhs_report:
+            latest_fhs_score = fhs_report['summary']['latest_fhs']
+
+        try:
+           print(f"DEBUG_RL_REPORT: User ID: {user_id}", flush=True)
+           monthly_contribution = await get_average_balance_last_3_months(user_id, db)
+           print(f"DEBUG_RL_REPORT: Raw Monthly Contribution from DB: {monthly_contribution}", flush=True)
+           
+           if monthly_contribution <= 0:
+               monthly_contribution = 100.0
+           print(f"DEBUG_RL_REPORT: Final Monthly Contribution Used: {monthly_contribution}", flush=True)
+        except Exception as e:
+            print(f"Error fetching monthly contribution: {e}", flush=True)
+            monthly_contribution = 100.0
+
+        # Get Current Balance
+        starting_balance = await get_total_current_balance(user_id, db)
+             
+        if starting_balance <= 0:
+             starting_balance = 1000.0
+        
+        # 4. Fetch REAL Market Data (Yahoo Finance)
+        # Determine Tickers
+        print(f"DEBUG_RL_REPORT: Included Assets Query Param: '{included_assets}'", flush=True)
+        if included_assets:
+            selected_keys = [k.strip() for k in included_assets.split(',') if k.strip() in TICKERS]
+            print(f"DEBUG_RL_REPORT: Parsed Selected Keys: {selected_keys}", flush=True)
+            
+            if not selected_keys:
+                 print("DEBUG_RL_REPORT: No valid keys found, falling back to all assets.", flush=True)
+                 target_tickers = TICKERS 
+            else:
+                 target_tickers = {k: TICKERS[k] for k in selected_keys}
+        else:
+            print("DEBUG_RL_REPORT: No assets specified, using ALL.", flush=True)
+            target_tickers = TICKERS
+            
+        print(f"DEBUG_RL_REPORT: Target Tickers for Fetch: {list(target_tickers.keys())}", flush=True)
+
+        try:
+            returns_df = fetch_asset_data(target_tickers)
+        except Exception as e:
+             print(f"Yahoo Finance API failed: {e}. Using mock market data.")
+             # Fallback
+             import pandas as pd
+             import numpy as np
+             dates = pd.date_range(start='2020-01-01', periods=1000)
+             mock_data = np.random.normal(0.0005, 0.01, (1000, len(target_tickers))) 
+             returns_df = pd.DataFrame(mock_data, index=dates, columns=list(target_tickers.keys()))
+
+        # 5. Run RL Optimization
+        rl_report = generate_rl_optimization_report(
+            latest_fhs=latest_fhs_score, 
+            starting_balance=starting_balance, 
+            monthly_contribution=monthly_contribution,
+            returns_df=returns_df 
+        )
+        
+        if "error" in rl_report:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=rl_report["error"])
+        
+        return rl_report
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error during RL report generation: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred during portfolio optimization.") 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"     
 
@@ -23,12 +141,13 @@ TICKERS = {
     'Retirement': 'AOM',      
     'RealEstate': 'VNQ',      
     'Gold': 'GLD',            
-    'Bonds': 'BND'            
+    'Bonds': 'BND',
+    'Cash': 'SHV'
 }
 ASSET_NAMES = list(TICKERS.keys())
 NUM_ASSETS = len(ASSET_NAMES)
 HISTORICAL_YEARS = 5 
-RL_TRAINING_STEPS = 50000 
+RL_TRAINING_STEPS = 5000 
 TRADING_DAYS_PER_YEAR = 252
 LOOKBACK_WINDOW = 60 
 INITIAL_PORTFOLIO_VALUE = 10000.0
@@ -56,8 +175,6 @@ def get_risk_aversion(latest_fhs: float) -> Tuple[float, str]:
         risk_profile = "Extremely Conservative (FHS: Very Poor)"
 
     return risk_aversion, risk_profile
-
-
 
 
 class PortfolioOptimizationEnv(gym.Env):
@@ -187,27 +304,82 @@ def fetch_asset_data(tickers: Dict) -> pd.DataFrame:
     
     print("Fetching historical asset data...")
     
-    data = yf.download(list(tickers.values()), start=start_date, end=end_date, auto_adjust=True)
-    
+    try:
+        data = yf.download(list(tickers.values()), start=start_date, end=end_date, auto_adjust=True, progress=False)
+    except Exception as e:
+        print(f"yfinance download failed: {e}")
+        raise ValueError("Failed to download data from Yahoo Finance.")
+
     if data.empty:
         raise ValueError("Failed to download asset data. Check tickers or date range.")
     
     if isinstance(data.columns, pd.MultiIndex):
-        prices_df = data['Close']
+        try:
+            # Handle potential multi-level column issues in newer yfinance versions
+            prices_df = data['Close'] if 'Close' in data.columns else data
+            if isinstance(prices_df.columns, pd.MultiIndex):
+                 # Try to drop top level if it's ticker symbols
+                 prices_df.columns = prices_df.columns.get_level_values(0)
+        except:
+             prices_df = data.copy()
     else:
         prices_df = data.copy()
         
-    prices_df.columns = ASSET_NAMES
-    prices_df = prices_df.dropna(axis=1) 
+    # Map back to friendly names
+    # Note: yfinance returns tickers as columns. We need to map 'BTC-USD' -> 'Crypto'
+    # Invert the tickers dict
+    inv_tickers = {v: k for k, v in tickers.items()}
+    
+    # Filter columns that are in our ticker list
+    valid_cols = [c for c in prices_df.columns if c in list(tickers.values())]
+    if not valid_cols:
+         # Maybe columns are already mapped or different format?
+         # Fallback assume order matches keys if length matches (Risky, but yfinance usually sorts)
+         # Better: Re-download individually or just use column matching
+         pass
+
+    prices_df = prices_df[valid_cols].copy()
+    prices_df.rename(columns=inv_tickers, inplace=True)
+    
+    prices_df = prices_df.dropna(axis=1, how='all') 
     prices_df = prices_df.fillna(method='ffill').fillna(method='bfill') 
+    prices_df = prices_df.dropna()
 
     returns = prices_df.pct_change().dropna()
     
-    if len(returns.columns) < 2:
+    if len(returns.columns) < 1:
         raise ValueError("Not enough valid asset data remaining after cleanup for optimization.")
         
-    print(f"Data fetched for {len(returns)} trading days.")
+    print(f"Data fetched for {len(returns)} trading days. Assets: {list(returns.columns)}")
     return returns
+
+def test_rl_agent(model: PPO, env: PortfolioOptimizationEnv) -> Dict:
+    """Run a deterministic evaluation of the trained agent."""
+    obs, _ = env.reset()
+    done = False
+    
+    while not done:
+        action, _states = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+        
+    trading_days = len(env.returns_history)
+    final_value = float(env.portfolio_value)
+    total_return = (final_value - env.initial_portfolio_value) / env.initial_portfolio_value
+    
+    annual_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / trading_days) - 1 if trading_days > 0 else 0.0
+    volatility = np.std(env.returns_history) * np.sqrt(TRADING_DAYS_PER_YEAR) if env.returns_history else 0.0
+    sharpe_ratio = annual_return / volatility if volatility > 0 else 0.0
+    
+    return {
+        'total_return': float(total_return),
+        'annual_return': float(annual_return),
+        'volatility': float(volatility),
+        'sharpe_ratio': float(sharpe_ratio),
+        'final_value': float(final_value),
+        'portfolio_history': [float(x) for x in env.portfolio_history],
+        'final_weights': env.current_weights
+    }
 
 def train_rl_agent(returns_df: pd.DataFrame, risk_aversion: float, initial_portfolio_value: float) -> Tuple[PPO, np.ndarray, Dict]:
     print("\n🚀 Training RL Portfolio Optimizer...")
@@ -216,56 +388,89 @@ def train_rl_agent(returns_df: pd.DataFrame, risk_aversion: float, initial_portf
     model = PPO("MlpPolicy", env, learning_rate=3e-4, verbose=0, device=DEVICE)
     model.learn(total_timesteps=RL_TRAINING_STEPS)
     
-    final_weights = env.get_final_weights()
+    print("\n🧐 Evaluating RL Agent (Deterministic)...")
+    # Use the same env for testing to see performance on the data
+    rl_results = test_rl_agent(model, env)
     
-    # === 关键修复：所有数值转为 float ===
-    trading_days = len(env.returns_history)
-    final_value = float(env.portfolio_value)
-    total_return = (final_value - INITIAL_PORTFOLIO_VALUE) / INITIAL_PORTFOLIO_VALUE
+    final_weights = rl_results['final_weights']
     
-    annual_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / trading_days) - 1 if trading_days > 0 else 0.0
-    volatility = np.std(env.returns_history) * np.sqrt(TRADING_DAYS_PER_YEAR) if env.returns_history else 0.0
-    sharpe_ratio = annual_return / volatility if volatility > 0 else 0.0
-    
-    rl_results = {
-        'total_return': float(total_return),
-        'annual_return': float(annual_return),
-        'volatility': float(volatility),
-        'sharpe_ratio': float(sharpe_ratio),
-        'final_value': float(final_value),
-        'portfolio_history': [float(x) for x in env.portfolio_history]
-    }
-    
-    print("✅ RL Training Completed!")
+    print("✅ RL Training & Evaluation Completed!")
     return model, final_weights, rl_results
 
 def run_monte_carlo(optimized_weights: np.ndarray, returns_df: pd.DataFrame, monthly_contribution: float, num_simulations: int = 100) -> Dict:
     time_horizons = [5, 10, 25]
     print(f"\n--- Running {num_simulations} Monte Carlo Simulations ---")
     
+    # Ensure aligned headers
+    assets_in_df = list(returns_df.columns)
+    # Weights might need to be mapped if it's a specific order. 
+    # train_rl_agent -> returns_df determines column order. 
+    # optimized_weights matches that order.
+    
     portfolio_returns = (returns_df * optimized_weights).sum(axis=1)
     daily_return = portfolio_returns.mean()
     daily_volatility = portfolio_returns.std()
     
-    mc_results = {}
+    mc_results = {
+        'summary_table': [],
+        'graphs': {}
+    }
     
     for horizon in time_horizons:
         num_trading_days = horizon * TRADING_DAYS_PER_YEAR
+        all_simulations = [] # Shape: (sims, days)
+        
         final_values = []
         
         for sim in range(num_simulations):
-            current_value = 0.0
+            current_value = 0.0 
+            sim_path = []
+            
             for day in range(num_trading_days):
-                if day % 21 == 0: current_value += monthly_contribution
+                # Add monthly contribution approx every 21 trading days
+                if day % 21 == 0: 
+                    current_value += monthly_contribution
+                
                 stochastic_return = np.random.normal(loc=daily_return, scale=daily_volatility)
                 current_value *= (1 + stochastic_return)
+                
+                # Record yearly points (every 252 days) for graph to reduce payload
+                if day % 252 == 0:
+                     sim_path.append(current_value)
+            
+            # Append final
+            sim_path.append(current_value)
+            all_simulations.append(sim_path)
             final_values.append(current_value)
             
-        # === 关键修复：Numpy 聚合结果转 float ===
-        mc_results[f'{horizon}yr'] = {
-            'mean_value': float(round(np.mean(final_values), 2)),
-            'p5_low': float(round(np.percentile(final_values, 5), 2)),
-            'p95_high': float(round(np.percentile(final_values, 95), 2)),
+        # Stats
+        mean_val = np.mean(final_values)
+        p5_val = np.percentile(final_values, 5)
+        p95_val = np.percentile(final_values, 95)
+        
+        mc_results['summary_table'].append({
+            'year': horizon,
+            'estimated_value': float(round(mean_val, 2)),
+            'optimistic_value': float(round(p95_val, 2)),
+            'pessimistic_value': float(round(p5_val, 2))
+        })
+        
+        # Prepare graph data: Average path + Upper/Lower bounds path
+        # all_simulations is list of lists. Length varies by horizon? No, fixed.
+        # But we want year-by-year points.
+        max_len = max(len(s) for s in all_simulations)
+        avg_path = []
+        year_labels = []
+        
+        for i in range(max_len):
+            step_vals = [s[i] for s in all_simulations if i < len(s)]
+            if step_vals:
+                avg_path.append(float(round(np.mean(step_vals), 2)))
+                year_labels.append(i) # i is years since we sampled every 252
+        
+        mc_results['graphs'][f'{horizon}yr'] = {
+            'years': year_labels,
+            'values': avg_path
         }
         
     return mc_results
@@ -284,26 +489,27 @@ def generate_rl_optimization_report(
         
         model, final_weights_raw, rl_performance = train_rl_agent(returns_df, risk_aversion, starting_balance)
         
-        # === 修复：确保权重是 Python float ===
+        # Map weights back to Asset Names correctly
+        asset_names = returns_df.columns.tolist()
         optimized_weights = {
             asset: float(round(float(weight) * 100, 2))
-            for asset, weight in zip(ASSET_NAMES, final_weights_raw)
+            for asset, weight in zip(asset_names, final_weights_raw)
         }
         
         mc_forecast = run_monte_carlo(final_weights_raw, returns_df, monthly_contribution)
         
         report = {
             "personalization": {
-                "latest_fhs": float(latest_fhs),  # 强制转换
+                "latest_fhs": float(latest_fhs),  
                 "risk_profile": risk_profile,
-                "starting_balance": float(starting_balance), # 强制转换
-                "monthly_contribution": float(monthly_contribution) # 强制转换
+                "starting_balance": float(starting_balance),
+                "monthly_contribution": float(monthly_contribution)
             },
             "rl_performance": {
                 "annual_return_pct": float(round(rl_performance['annual_return'] * 100, 2)),
                 "annual_volatility_pct": float(round(rl_performance['volatility'] * 100, 2)),
                 "sharpe_ratio": float(round(rl_performance['sharpe_ratio'], 2)),
-                "final_value_history": rl_performance['portfolio_history'] # 已经在 train_rl_agent 里转过了
+                "final_value_history": rl_performance['portfolio_history']
             },
             "optimized_weights": optimized_weights,
             "mc_forecast": mc_forecast

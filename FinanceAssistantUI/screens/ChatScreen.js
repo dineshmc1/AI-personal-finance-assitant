@@ -1,11 +1,11 @@
 // screens/ChatScreen.js
 import React, { useState, useRef, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -15,14 +15,16 @@ import {
 } from "react-native";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { chatService } from "../services/apiClient"; 
+import { chatService } from "../services/apiClient";
+import Markdown from 'react-native-markdown-display';
+import PortfolioReport from '../components/PortfolioReport';
 
 export default function ChatScreen({ navigation }) {
   const { colors } = useTheme();
   const [messages, setMessages] = useState([
-    { 
-      id: 1, 
-      text: "Hello! I'm your AI finance assistant. I can analyze your last 90 days of data, forecast your future balance, or check your financial health. What would you like to do?", 
+    {
+      id: 1,
+      text: "Hello! I'm your AI finance assistant. I can analyze your last 90 days of data, forecast your future balance, or check your financial health. What would you like to do?",
       isUser: false,
       timestamp: new Date(),
       type: "welcome"
@@ -30,14 +32,16 @@ export default function ChatScreen({ navigation }) {
   ]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRetraining, setIsRetraining] = useState(false);
   const flatListRef = useRef(null);
-  
+
   const suggestedQuestions = [
     { label: "📊 90-Day Analysis", query: "Analyze my income and spending over the last 90 days." },
     { label: "🔮 Future Forecast", query: "Forecast my balance and cash flow for the next 30 days." },
     { label: "❤️ Financial Health", query: "What is my current Financial Health Score and risk profile?" },
     { label: "💰 Create Budget", query: "Generate a smart budget based on my recent habits." },
     { label: "👯 Twin Comparison", query: "How am I performing compared to my Digital Twin?" },
+    { label: "🚀 Optimize Portfolio", query: "OPTIMIZE_PORTFOLIO_ACTION" },
   ];
 
   useEffect(() => {
@@ -48,9 +52,69 @@ export default function ChatScreen({ navigation }) {
     }
   }, [messages, isLoading]);
 
+  const handleRetrain = async (includedAssets) => {
+    setIsRetraining(true);
+    try {
+      const response = await chatService.getRlOptimization(includedAssets);
+
+      const newReportMsg = {
+        id: Date.now(),
+        text: "Portfolio Re-optimized based on your selection.",
+        isUser: false,
+        timestamp: new Date(),
+        type: "portfolio_report",
+        reportData: response
+      };
+      setMessages(prev => [...prev, newReportMsg]);
+
+    } catch (error) {
+      Alert.alert("Optimization Failed", error.message);
+    } finally {
+      setIsRetraining(false);
+    }
+  };
+
   const sendMessage = async (textOverride = null) => {
     const textToSend = textOverride || inputText;
     if (!textToSend.trim()) return;
+
+    // Handle Special Actions
+    if (textToSend === "OPTIMIZE_PORTFOLIO_ACTION") {
+      const userMessage = {
+        id: Date.now(),
+        text: "Optimize my investment portfolio using AI.",
+        isUser: true,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setIsLoading(true);
+
+      try {
+        const response = await chatService.getRlOptimization();
+        const aiMessage = {
+          id: Date.now() + 1,
+          text: "Here is your AI-optimized portfolio report.",
+          isUser: false,
+          timestamp: new Date(),
+          type: "portfolio_report",
+          reportData: response
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } catch (error) {
+        console.error("Optimization Error:", error);
+        const errorMsg = {
+          id: Date.now() + 1,
+          text: "Failed to generate portfolio optimization report. " + error.message,
+          isUser: false,
+          timestamp: new Date(),
+          isError: true
+        };
+        setMessages(prev => [...prev, errorMsg]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     const userMessage = {
       id: Date.now(),
@@ -81,18 +145,18 @@ export default function ChatScreen({ navigation }) {
         isUser: false,
         timestamp: new Date()
       };
-      
+
       setMessages(prev => [...prev, aiMessage]);
 
     } catch (error) {
       console.error("Chat Error:", error);
-      
+
       let errorMessage = "Sorry, I'm having trouble connecting to the server.";
       if (error.status === 400) {
         if (error.message && error.message.includes("Requires at least")) {
-           errorMessage = "I need at least 30 days of transaction history to perform this analysis. Please add more transactions.";
+          errorMessage = "I need at least 30 days of transaction history to perform this analysis. Please add more transactions.";
         } else {
-           errorMessage = error.message;
+          errorMessage = error.message;
         }
       } else if (error.message) {
         errorMessage = `Error: ${error.message}`;
@@ -116,18 +180,18 @@ export default function ChatScreen({ navigation }) {
   };
 
   const formatTime = (date) => {
-    return new Date(date).toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return new Date(date).toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
   };
 
   const clearChat = () => {
     setMessages([
-      { 
-        id: Date.now(), 
-        text: "Conversation cleared. Pick a suggestion below to start analyzing your data.", 
+      {
+        id: Date.now(),
+        text: "Conversation cleared. Pick a suggestion below to start analyzing your data.",
         isUser: false,
         timestamp: new Date(),
         type: "welcome"
@@ -138,37 +202,78 @@ export default function ChatScreen({ navigation }) {
   const renderMessage = ({ item }) => (
     <View style={[
       styles.messageContainer,
-      item.isUser ? styles.userContainer : styles.aiContainer
+      item.isUser ? styles.userContainer : styles.aiContainer,
+      item.type === 'portfolio_report' ? { width: '100%' } : {}
     ]}>
       {!item.isUser && (
         <View style={[styles.avatar, { backgroundColor: item.isError ? '#ffebee' : colors.primary + '20' }]}>
-          <MaterialCommunityIcons 
-            name={item.isError ? "alert-circle" : "robot"} 
-            size={16} 
-            color={item.isError ? "red" : colors.primary} 
+          <MaterialCommunityIcons
+            name={item.isError ? "alert-circle" : "robot"}
+            size={16}
+            color={item.isError ? "red" : colors.primary}
           />
         </View>
       )}
-      
-      <View style={[
-        styles.messageBubble,
-        item.isUser 
-          ? [styles.userBubble, { backgroundColor: colors.primary }]
-          : [styles.aiBubble, { backgroundColor: colors.surface }]
-      ]}>
-        <Text style={[
-          styles.messageText,
-          { color: item.isUser ? colors.surface : colors.onSurface }
+
+      {item.type === 'portfolio_report' ? (
+        <View style={{ flex: 1, width: '100%' }}>
+          <PortfolioReport
+            report={item.reportData}
+            onRetrain={handleRetrain}
+            isRetraining={isRetraining}
+          />
+        </View>
+      ) : (
+        <View style={[
+          styles.messageBubble,
+          item.isUser
+            ? [styles.userBubble, { backgroundColor: colors.primary }]
+            : [styles.aiBubble, { backgroundColor: colors.surface }]
         ]}>
-          {item.text}
-        </Text>
-        <Text style={[
-          styles.timestamp,
-          { color: item.isUser ? colors.surface + '80' : colors.onSurface + '60' }
-        ]}>
-          {formatTime(item.timestamp)}
-        </Text>
-      </View>
+          {item.isUser ? (
+            <Text style={[
+              styles.messageText,
+              { color: colors.surface }
+            ]}>
+              {item.text}
+            </Text>
+          ) : (
+            <Markdown
+              style={{
+                body: {
+                  fontSize: 15,
+                  lineHeight: 22,
+                  color: colors.onSurface
+                },
+                paragraph: {
+                  marginBottom: 10,
+                },
+                link: {
+                  color: colors.primary,
+                },
+                code_inline: {
+                  backgroundColor: colors.surfaceVariant || '#f0f0f0',
+                  color: colors.primary,
+                  fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+                },
+                fence: {
+                  backgroundColor: colors.surfaceVariant || '#f0f0f0',
+                  color: colors.onSurface,
+                  borderColor: colors.outline || '#e0e0e0',
+                }
+              }}
+            >
+              {item.text}
+            </Markdown>
+          )}
+          <Text style={[
+            styles.timestamp,
+            { color: item.isUser ? colors.surface + '80' : colors.onSurface + '60' }
+          ]}>
+            {formatTime(item.timestamp)}
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -207,22 +312,22 @@ export default function ChatScreen({ navigation }) {
   );
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0} 
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       <StatusBar backgroundColor={colors.surface} barStyle="dark-content" />
-      
+
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerContent}>
           <View style={[styles.aiAvatar, { backgroundColor: colors.primary }]}>
             <MaterialCommunityIcons name="robot" size={20} color={colors.surface} />
@@ -236,7 +341,7 @@ export default function ChatScreen({ navigation }) {
             </Text>
           </View>
         </View>
-        
+
         <TouchableOpacity style={styles.menuButton} onPress={clearChat}>
           <MaterialCommunityIcons name="autorenew" size={24} color={colors.primary} />
         </TouchableOpacity>
@@ -251,18 +356,18 @@ export default function ChatScreen({ navigation }) {
         style={styles.messagesList}
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
-        ListFooterComponent={renderFooter} 
+        ListFooterComponent={renderFooter}
       />
 
       {/* Input Section */}
-      <View style={[styles.inputSection, { 
+      <View style={[styles.inputSection, {
         backgroundColor: colors.surface,
-        paddingBottom: Platform.OS === 'ios' ? 25 : 20 
+        paddingBottom: Platform.OS === 'ios' ? 25 : 20
       }]}>
         <View style={styles.inputContainer}>
           <TextInput
-            style={[styles.input, { 
-              backgroundColor: colors.background, 
+            style={[styles.input, {
+              backgroundColor: colors.background,
               color: colors.onSurface,
               borderColor: colors.outline
             }]}
@@ -273,10 +378,10 @@ export default function ChatScreen({ navigation }) {
             multiline
             maxLength={500}
           />
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
-              styles.sendButton, 
-              { 
+              styles.sendButton,
+              {
                 backgroundColor: (inputText.trim() && !isLoading) ? colors.primary : colors.surface,
                 borderWidth: (inputText.trim() && !isLoading) ? 0 : 1,
                 borderColor: colors.outline
@@ -285,10 +390,10 @@ export default function ChatScreen({ navigation }) {
             onPress={() => sendMessage()}
             disabled={!inputText.trim() || isLoading}
           >
-             <MaterialCommunityIcons 
-              name="send" 
-              size={20} 
-              color={(inputText.trim()) ? colors.surface : colors.onSurface + '40'} 
+            <MaterialCommunityIcons
+              name="send"
+              size={20}
+              color={(inputText.trim()) ? colors.surface : colors.onSurface + '40'}
             />
           </TouchableOpacity>
         </View>
@@ -330,7 +435,7 @@ const styles = StyleSheet.create({
   aiBubble: { borderBottomLeftRadius: 6 },
   messageText: { fontSize: 15, lineHeight: 22 },
   timestamp: { fontSize: 10, marginTop: 6, alignSelf: 'flex-end' },
-  
+
   // Footer & Suggestions Styles
   footerContainer: { paddingBottom: 10 },
   thinkingContainer: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 18, marginTop: 8, marginLeft: 44, alignSelf: 'flex-start', maxWidth: '70%' },

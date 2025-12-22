@@ -8,7 +8,7 @@ const normalizeBaseUrl = (url) => {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 
-const FALLBACK_URL = 'http://10.0.2.2:8000'; 
+const FALLBACK_URL = 'http://10.0.2.2:8000';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 const API_BASE_URL = normalizeBaseUrl(ENV_URL) || FALLBACK_URL;
@@ -80,7 +80,7 @@ export const apiRequest = async (path, options = {}) => {
           attemptedRefresh = true;
           try {
             await tokenRefreshHandler();
-            continue; 
+            continue;
           } catch (refreshError) {
             console.warn('Token refresh failed:', refreshError);
           }
@@ -113,6 +113,13 @@ export const chatService = {
   },
   getFinancialHealth: async () => {
     return apiRequest('/reports/fhs');
+  },
+  getRlOptimization: async (includedAssets) => {
+    let url = '/reports/optimization/rl';
+    if (includedAssets) {
+      url += `?included_assets=${encodeURIComponent(includedAssets)}`;
+    }
+    return apiRequest(url);
   }
 };
 
@@ -120,6 +127,6 @@ export const apiUpload = async (path, formData) => {
   console.log(`📤 Uploading via apiRequest...`);
   return apiRequest(path, {
     method: 'POST',
-    body: formData, 
+    body: formData,
   });
 };
