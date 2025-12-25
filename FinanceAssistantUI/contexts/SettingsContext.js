@@ -6,6 +6,7 @@ const SettingsContext = createContext();
 export const SettingsProvider = ({ children }) => {
     const [currency, setCurrency] = useState('MYR');
     const [currencySymbol, setCurrencySymbol] = useState('RM');
+    const [isDarkMode, setIsDarkMode] = useState(true); // Default to dark
     const [isLoading, setIsLoading] = useState(true);
 
     const CURRENCY_OPTIONS = {
@@ -23,14 +24,29 @@ export const SettingsProvider = ({ children }) => {
     const loadSettings = async () => {
         try {
             const storedCurrency = await AsyncStorage.getItem('userSettings_currency');
+            const storedTheme = await AsyncStorage.getItem('userSettings_theme');
+
             if (storedCurrency && CURRENCY_OPTIONS[storedCurrency]) {
                 setCurrency(storedCurrency);
                 setCurrencySymbol(CURRENCY_OPTIONS[storedCurrency]);
+            }
+            if (storedTheme !== null) {
+                setIsDarkMode(storedTheme === 'dark');
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const toggleTheme = async () => {
+        try {
+            const newMode = !isDarkMode;
+            setIsDarkMode(newMode);
+            await AsyncStorage.setItem('userSettings_theme', newMode ? 'dark' : 'light');
+        } catch (error) {
+            console.error('Failed to save theme:', error);
         }
     };
 
@@ -53,7 +69,9 @@ export const SettingsProvider = ({ children }) => {
         <SettingsContext.Provider value={{
             currency,
             currencySymbol,
+            isDarkMode,
             updateCurrency,
+            toggleTheme,
             isLoading
         }}>
             {children}

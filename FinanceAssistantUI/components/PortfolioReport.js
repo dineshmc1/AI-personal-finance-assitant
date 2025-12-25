@@ -97,7 +97,7 @@ export default function PortfolioReport({ report, onRetrain, isRetraining }) {
             <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <View style={styles.chartHeaderContainer}>
                     <Text style={[styles.cardTitle, { color: colors.onSurface, textAlign: 'center' }]}>Monte Carlo Forecast</Text>
-                    <View style={styles.tabs}>
+                    <View style={[styles.tabs, { backgroundColor: colors.surfaceVariant }]}>
                         {['5yr', '10yr', '25yr'].map(h => (
                             <TouchableOpacity
                                 key={h}
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     cardTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12 },
 
     chartHeaderContainer: { alignItems: 'center', marginBottom: 10 },
-    tabs: { flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 8, padding: 2, marginTop: 8 },
+    tabs: { flexDirection: 'row', borderRadius: 8, padding: 2, marginTop: 8 },
     tab: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
     tabText: { fontSize: 12, fontWeight: '500' },
     chart: { marginVertical: 8, borderRadius: 16, marginLeft: -20 }, // slight offset/fix for chartkit labels

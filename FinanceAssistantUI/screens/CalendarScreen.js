@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ScrollView, 
-  RefreshControl, 
-  Modal, 
-  TextInput, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  Modal,
+  TextInput,
   Alert,
   Platform,
   KeyboardAvoidingView
@@ -16,178 +16,26 @@ import { Calendar } from 'react-native-calendars';
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTransactions } from '../contexts/TransactionContext';
-import { apiRequest } from '../services/apiClient'; 
+import { apiRequest } from '../services/apiClient';
+
+import { LinearGradient } from "expo-linear-gradient";
 
 export default function CalendarScreen({ navigation }) {
   const { colors } = useTheme();
-  const { calendarEvents, loadCalendarEvents } = useTransactions();
-  
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [refreshing, setRefreshing] = useState(false);
-  
-  // === Modal State ===
-  const [showModal, setShowModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); 
-  const [editingId, setEditingId] = useState(null); 
+  // ... (existing code)
 
-  const [billForm, setBillForm] = useState({
-    name: "",
-    amount: "",
-    next_due_date: new Date().toISOString().split('T')[0],
-    frequency: "Monthly",
-    category: "Housing"
-  });
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    loadCalendarEvents();
-  }, []);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadCalendarEvents();
-    setRefreshing(false);
-  };
-
-  const openAddModal = () => {
-    setIsEditing(false);
-    setEditingId(null);
-    setBillForm({
-      name: "",
-      amount: "",
-      next_due_date: selectedDate,
-      frequency: "Monthly",
-      category: "Housing"
-    });
-    setShowModal(true);
-  };
-
-  const openEditModal = (event) => {
-    if (event.type !== 'User Bill') {
-      Alert.alert("Info", "This is an automatically detected recurring payment. You cannot edit it manually here.");
-      return;
-    }
-    
-    if (!event.id) {
-      Alert.alert("Error", "Cannot edit this bill (Missing ID). Try deleting it instead.");
-      return;
-    }
-
-    setIsEditing(true);
-    setEditingId(event.id);
-    setBillForm({
-      name: event.name.split(' (RM')[0], 
-      amount: Math.abs(event.amount).toString(),
-      next_due_date: event.event_date || selectedDate, 
-      frequency: "Monthly", 
-      category: "Housing"
-    });
-    setShowModal(true);
-  };
-
-  const handleSaveBill = async () => {
-    if (!billForm.name || !billForm.amount) {
-      Alert.alert("Error", "Please fill in name and amount.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const payload = {
-        name: billForm.name,
-        amount: parseFloat(billForm.amount),
-        next_due_date: billForm.next_due_date,
-        frequency: billForm.frequency,
-        category: "Housing"
-      };
-
-      if (isEditing && editingId) {
-        await apiRequest(`/calendar/bill/${editingId}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload)
-        });
-        Alert.alert("Success", "Bill updated successfully!");
-      } else {
-        await apiRequest('/calendar/bill', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        Alert.alert("Success", "Bill added successfully!");
-      }
-
-      setShowModal(false);
-      await loadCalendarEvents();
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", `Failed to ${isEditing ? 'update' : 'save'} bill.`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeleteBill = (event) => {
-    if (event.type !== 'User Bill') return;
-
-    Alert.alert(
-      "Delete Bill",
-      `Are you sure you want to delete "${event.name}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-             if (!event.id) {
-                 Alert.alert("Error", "Bill ID missing, cannot delete.");
-                 return;
-             }
-             
-             try {
-                await apiRequest(`/calendar/bill/${event.id}`, { method: 'DELETE' });
-                Alert.alert("Deleted", "Bill deleted successfully.");
-                loadCalendarEvents(); 
-             } catch(e) { 
-                 console.error(e);
-                 Alert.alert("Error", "Failed to delete bill."); 
-             }
-          }
-        }
-      ]
-    );
-  };
-
-  const markedDates = useMemo(() => {
-    const marks = {};
-    if (calendarEvents) {
-      Object.keys(calendarEvents).forEach(date => {
-        const events = calendarEvents[date];
-        let dotColor = colors.primary;
-        if (events.some(e => e.type === 'Bill Due' || e.type === 'User Bill')) dotColor = '#F44336';
-        else if (events.some(e => e.type === 'Income Expected')) dotColor = '#4CAF50';
-
-        marks[date] = { marked: true, dotColor: dotColor };
-      });
-    }
-    marks[selectedDate] = { 
-      ...(marks[selectedDate] || {}), 
-      selected: true, 
-      selectedColor: colors.primary 
-    };
-    return marks;
-  }, [calendarEvents, selectedDate, colors]);
-
-  const selectedEvents = calendarEvents[selectedDate] || [];
+  // ... (existing code)
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{padding: 8}}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
+      <LinearGradient colors={["#00f3ff20", "#8a2be220"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Financial Calendar</Text>
-        <View style={{width: 40}} />
-      </View>
+        <Text style={[styles.headerTitle, { color: colors.primary, textShadowColor: colors.primary, textShadowRadius: 8 }]}>Financial Calendar</Text>
+        <View style={{ width: 40 }} />
+      </LinearGradient>
 
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         <Calendar
@@ -195,7 +43,7 @@ export default function CalendarScreen({ navigation }) {
           onDayPress={day => {
             setSelectedDate(day.dateString);
             if (!isEditing) {
-                setBillForm(prev => ({ ...prev, next_due_date: day.dateString }));
+              setBillForm(prev => ({ ...prev, next_due_date: day.dateString }));
             }
           }}
           markedDates={markedDates}
@@ -218,7 +66,7 @@ export default function CalendarScreen({ navigation }) {
           <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
             Events on {selectedDate}
           </Text>
-          
+
           {selectedEvents.length === 0 ? (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons name="calendar-blank" size={48} color={colors.onSurface} style={{ opacity: 0.3 }} />
@@ -231,30 +79,30 @@ export default function CalendarScreen({ navigation }) {
             </View>
           ) : (
             selectedEvents.map((event, index) => (
-              <TouchableOpacity 
-                key={index} 
+              <TouchableOpacity
+                key={index}
                 style={[styles.eventCard, { backgroundColor: colors.surface }]}
                 onLongPress={() => handleDeleteBill(event)}
                 onPress={() => openEditModal(event)}
                 delayLongPress={500}
               >
-                <View style={[styles.iconBox, { 
-                    backgroundColor: event.amount < 0 ? '#FFEBEE' : '#E8F5E8' 
+                <View style={[styles.iconBox, {
+                  backgroundColor: event.amount < 0 ? '#FFEBEE' : '#E8F5E8'
                 }]}>
-                  <MaterialCommunityIcons 
-                    name={event.amount < 0 ? "file-document-outline" : "cash-plus"} 
-                    size={24} 
-                    color={event.amount < 0 ? "#F44336" : "#4CAF50"} 
+                  <MaterialCommunityIcons
+                    name={event.amount < 0 ? "file-document-outline" : "cash-plus"}
+                    size={24}
+                    color={event.amount < 0 ? "#F44336" : "#4CAF50"}
                   />
                 </View>
-                <View style={{flex: 1}}>
-                    <Text style={[styles.eventName, { color: colors.onSurface }]}>{event.name}</Text>
-                    <Text style={{fontSize: 12, opacity: 0.6, color: colors.onSurface}}>
-                        {event.type} {event.source ? `• ${event.source}` : ''}
-                    </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.eventName, { color: colors.onSurface }]}>{event.name}</Text>
+                  <Text style={{ fontSize: 12, opacity: 0.6, color: colors.onSurface }}>
+                    {event.type} {event.source ? `• ${event.source}` : ''}
+                  </Text>
                 </View>
-                <Text style={[styles.eventAmount, { 
-                    color: event.amount < 0 ? "#F44336" : "#4CAF50" 
+                <Text style={[styles.eventAmount, {
+                  color: event.amount < 0 ? "#F44336" : "#4CAF50"
                 }]}>
                   {event.amount < 0 ? '-' : '+'}RM {Math.abs(event.amount).toFixed(2)}
                 </Text>
@@ -262,11 +110,11 @@ export default function CalendarScreen({ navigation }) {
             ))
           )}
         </View>
-        <View style={{height: 80}} />
+        <View style={{ height: 80 }} />
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
         onPress={openAddModal}
       >
@@ -275,55 +123,55 @@ export default function CalendarScreen({ navigation }) {
 
       {/* Modal */}
       <Modal visible={showModal} transparent animationType="slide">
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.primary }]}>
-                {isEditing ? "Edit Bill" : "Add Recurring Bill"}
+              {isEditing ? "Edit Bill" : "Add Recurring Bill"}
             </Text>
-            
+
             <Text style={[styles.label, { color: colors.onSurface }]}>Bill Name</Text>
-            <TextInput 
+            <TextInput
               style={[styles.input, { color: colors.onSurface, borderColor: colors.outline || '#ccc' }]}
               placeholder="e.g. Netflix, Rent"
               placeholderTextColor={colors.onSurface + '80'}
               value={billForm.name}
-              onChangeText={t => setBillForm({...billForm, name: t})}
+              onChangeText={t => setBillForm({ ...billForm, name: t })}
             />
 
             <Text style={[styles.label, { color: colors.onSurface }]}>Amount (RM)</Text>
-            <TextInput 
+            <TextInput
               style={[styles.input, { color: colors.onSurface, borderColor: colors.outline || '#ccc' }]}
               placeholder="0.00"
               placeholderTextColor={colors.onSurface + '80'}
               keyboardType="decimal-pad"
               value={billForm.amount.toString()}
-              onChangeText={t => setBillForm({...billForm, amount: t})}
+              onChangeText={t => setBillForm({ ...billForm, amount: t })}
             />
 
             <Text style={[styles.label, { color: colors.onSurface }]}>First Due Date</Text>
-            <TextInput 
+            <TextInput
               style={[styles.input, { color: colors.onSurface, borderColor: colors.outline || '#ccc' }]}
               value={billForm.next_due_date}
               placeholder="YYYY-MM-DD"
-              onChangeText={t => setBillForm({...billForm, next_due_date: t})}
+              onChangeText={t => setBillForm({ ...billForm, next_due_date: t })}
             />
 
             <Text style={[styles.label, { color: colors.onSurface }]}>Frequency</Text>
             <View style={styles.frequencyRow}>
               {["Monthly", "Annually"].map(freq => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={freq}
                   style={[
-                    styles.freqButton, 
-                    { 
+                    styles.freqButton,
+                    {
                       backgroundColor: billForm.frequency === freq ? colors.primary : colors.surface,
                       borderColor: colors.primary
                     }
                   ]}
-                  onPress={() => setBillForm({...billForm, frequency: freq})}
+                  onPress={() => setBillForm({ ...billForm, frequency: freq })}
                 >
                   <Text style={{ color: billForm.frequency === freq ? 'white' : colors.primary }}>{freq}</Text>
                 </TouchableOpacity>
@@ -331,14 +179,14 @@ export default function CalendarScreen({ navigation }) {
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, { backgroundColor: '#f0f0f0' }]} 
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#f0f0f0' }]}
                 onPress={() => setShowModal(false)}
               >
                 <Text style={{ color: 'black' }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, { backgroundColor: colors.primary }]} 
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
                 onPress={handleSaveBill}
                 disabled={isSaving}
               >

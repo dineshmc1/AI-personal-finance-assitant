@@ -1,14 +1,14 @@
 // screens/UploadScreen.js
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
-  Modal, 
-  TextInput, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Modal,
+  TextInput,
   ActivityIndicator,
   Animated,
   Easing,
@@ -31,18 +31,18 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function UploadScreen() {
   const { colors } = useTheme();
-  const { 
-    addTransaction, 
-    uploadReceipt, 
-    categories, 
-    getCategoryIcon 
+  const {
+    addTransaction,
+    uploadReceipt,
+    categories,
+    getCategoryIcon
   } = useTransactions();
-  
+
   const navigation = useNavigation();
-  
+
   const [documents, setDocuments] = useState([]);
   const [images, setImages] = useState([]);
-  
+
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
@@ -51,7 +51,7 @@ export default function UploadScreen() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  
+
   const [manualEntry, setManualEntry] = useState({
     type: 'expend',
     amount: '',
@@ -61,24 +61,24 @@ export default function UploadScreen() {
     time: new Date().toTimeString().split(' ')[0].substring(0, 5)
   });
 
-  const displayCategories = categories.filter(c => 
-      (manualEntry.type === 'expend' && c.type === 'Expense') ||
-      (manualEntry.type === 'income' && c.type === 'Income')
+  const displayCategories = categories.filter(c =>
+    (manualEntry.type === 'expend' && c.type === 'Expense') ||
+    (manualEntry.type === 'income' && c.type === 'Income')
   );
 
-  const fallbackCategories = manualEntry.type === 'expend' 
-      ? ['Food', 'Transport', 'Shopping', 'Bills'] 
-      : ['Salary', 'Freelance'];
+  const fallbackCategories = manualEntry.type === 'expend'
+    ? ['Food', 'Transport', 'Shopping', 'Bills']
+    : ['Salary', 'Freelance'];
 
-  const finalCategoriesList = displayCategories.length > 0 
-      ? displayCategories.map(c => c.name) 
-      : fallbackCategories;
+  const finalCategoriesList = displayCategories.length > 0
+    ? displayCategories.map(c => c.name)
+    : fallbackCategories;
 
 
   const startProgressAnimation = () => {
     progressAnim.setValue(0);
     Animated.timing(progressAnim, {
-      toValue: 0.9, 
+      toValue: 0.9,
       duration: 3000,
       easing: Easing.out(Easing.ease),
       useNativeDriver: false,
@@ -164,7 +164,7 @@ export default function UploadScreen() {
   };
 
   const viewImage = (image) => { setSelectedImage(image); setShowImageModal(true); };
-  
+
   const downloadImage = async () => { /* ... (no change) ... */ };
   const showAlternativeOptions = () => { /* ... (no change) ... */ };
   const deleteImage = (imageId, imageName) => { /* ... (no change) ... */ };
@@ -186,18 +186,18 @@ export default function UploadScreen() {
         date: new Date(manualEntry.date),
         time: manualEntry.time,
         description: manualEntry.description,
-        icon: getCategoryIcon(manualEntry.category) 
+        icon: getCategoryIcon(manualEntry.category)
       };
 
-      await new Promise(resolve => setTimeout(resolve, 1000)); 
-      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       await addTransaction(newTransaction);
-      
+
       finishProgressAnimation();
       startSuccessAnimation();
-      
+
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       setShowManualEntry(false);
       setManualEntry({
         type: 'expend',
@@ -207,9 +207,9 @@ export default function UploadScreen() {
         date: new Date().toISOString().split('T')[0],
         time: new Date().toTimeString().split(' ')[0].substring(0, 5)
       });
-      
-      navigation.navigate('MainRoot'); 
-      
+
+      navigation.navigate('MainRoot');
+
     } catch (error) {
       alert('Failed to save transaction');
       console.error('Save transaction error:', error);
@@ -226,14 +226,14 @@ export default function UploadScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient colors={["#7e92edff", "#84aae7ff"]} style={styles.headerGradient}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20 }}>
         <View style={styles.header}>
           <View style={styles.headerTextContainer}>
-            <Text style={styles.title}>Upload & Track</Text>
-            <Text style={styles.subtitle}>Upload receipts via AI or add manually</Text>
+            <Text style={[styles.title, { color: colors.primary, textShadowColor: colors.primary, textShadowRadius: 10 }]}>Upload & Track</Text>
+            <Text style={[styles.subtitle, { color: colors.onSurface }]}>Upload receipts via AI or add manually</Text>
           </View>
         </View>
-      </LinearGradient>
+      </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.uploadSection}>
@@ -263,28 +263,41 @@ export default function UploadScreen() {
         </View>
       </ScrollView>
 
+      {/* Global Loading Overlay */}
+      {isSaving && !showManualEntry && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: '#fff' }]}>
+            Analyzing Receipt...
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 5 }}>
+            AI is extracting details
+          </Text>
+        </View>
+      )}
+
       {/* Image View Modal */}
       {/* ... */}
 
       {/* Manual Entry Modal - UPDATED */}
       <Modal visible={showManualEntry} animationType="slide">
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <LinearGradient colors={["#7e92edff", "#84aae7ff"]} style={styles.modalHeaderGradient}>
+          <View style={[styles.modalHeaderGradient, { borderBottomColor: colors.primary, borderBottomWidth: 1 }]}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => !isSaving && setShowManualEntry(false)}>
-                <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+                <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary} />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Add Manual Entry</Text>
+              <Text style={[styles.modalTitle, { color: colors.primary }]}>Add Manual Entry</Text>
               <View style={styles.placeholder} />
             </View>
-          </LinearGradient>
+          </View>
 
           <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
             {/* Loading Overlay */}
             {isSaving && (
               <View style={styles.loadingOverlay}>
-                 <ActivityIndicator size="large" color={colors.primary} />
-                 <Text style={{marginTop: 10, color: 'white'}}>Saving...</Text>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 10, color: 'white' }}>Saving...</Text>
               </View>
             )}
 
@@ -294,14 +307,14 @@ export default function UploadScreen() {
               <View style={styles.typeSelector}>
                 <TouchableOpacity
                   style={[styles.typeButton, { backgroundColor: manualEntry.type === 'income' ? colors.primary : colors.surface, borderColor: colors.primary }]}
-                  onPress={() => setManualEntry({...manualEntry, type: 'income', category: ''})} // Reset category on switch
+                  onPress={() => setManualEntry({ ...manualEntry, type: 'income', category: '' })} // Reset category on switch
                   disabled={isSaving}
                 >
                   <Text style={[styles.typeText, { color: manualEntry.type === 'income' ? colors.surface : colors.primary }]}>Income</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.typeButton, { backgroundColor: manualEntry.type === 'expend' ? colors.primary : colors.surface, borderColor: colors.primary }]}
-                  onPress={() => setManualEntry({...manualEntry, type: 'expend', category: ''})}
+                  onPress={() => setManualEntry({ ...manualEntry, type: 'expend', category: '' })}
                   disabled={isSaving}
                 >
                   <Text style={[styles.typeText, { color: manualEntry.type === 'expend' ? colors.surface : colors.primary }]}>Expend</Text>
@@ -318,7 +331,7 @@ export default function UploadScreen() {
                 placeholderTextColor={colors.onSurface}
                 keyboardType="decimal-pad"
                 value={manualEntry.amount}
-                onChangeText={(text) => setManualEntry({...manualEntry, amount: text})}
+                onChangeText={(text) => setManualEntry({ ...manualEntry, amount: text })}
                 editable={!isSaving}
               />
             </View>
@@ -332,18 +345,18 @@ export default function UploadScreen() {
                     key={catName}
                     style={[
                       styles.categoryButton,
-                      { 
+                      {
                         backgroundColor: manualEntry.category === catName ? colors.primary : colors.surface,
                         borderColor: colors.primary
                       }
                     ]}
-                    onPress={() => setManualEntry({...manualEntry, category: catName})}
+                    onPress={() => setManualEntry({ ...manualEntry, category: catName })}
                     disabled={isSaving}
                   >
-                    <MaterialCommunityIcons 
-                      name={getCategoryIcon(catName)} 
-                      size={16} 
-                      color={manualEntry.category === catName ? colors.surface : colors.primary} 
+                    <MaterialCommunityIcons
+                      name={getCategoryIcon(catName)}
+                      size={16}
+                      color={manualEntry.category === catName ? colors.surface : colors.primary}
                     />
                     <Text style={[
                       styles.categoryText,
@@ -366,39 +379,39 @@ export default function UploadScreen() {
                 multiline
                 numberOfLines={3}
                 value={manualEntry.description}
-                onChangeText={(text) => setManualEntry({...manualEntry, description: text})}
+                onChangeText={(text) => setManualEntry({ ...manualEntry, description: text })}
                 editable={!isSaving}
               />
             </View>
 
             {/* Date & Time */}
             <View style={styles.section}>
-               <View style={styles.row}>
+              <View style={styles.row}>
                 <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
                   <Text style={[styles.label, { color: colors.onSurface }]}>Date</Text>
-                  <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]} value={manualEntry.date} onChangeText={(text) => setManualEntry({...manualEntry, date: text})} placeholder="YYYY-MM-DD" editable={!isSaving} />
+                  <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]} value={manualEntry.date} onChangeText={(text) => setManualEntry({ ...manualEntry, date: text })} placeholder="YYYY-MM-DD" editable={!isSaving} />
                 </View>
                 <View style={[styles.inputGroup, { flex: 1 }]}>
                   <Text style={[styles.label, { color: colors.onSurface }]}>Time</Text>
-                  <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]} value={manualEntry.time} onChangeText={(text) => setManualEntry({...manualEntry, time: text})} placeholder="HH:MM" editable={!isSaving} />
+                  <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]} value={manualEntry.time} onChangeText={(text) => setManualEntry({ ...manualEntry, time: text })} placeholder="HH:MM" editable={!isSaving} />
                 </View>
               </View>
             </View>
 
             {/* Save Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: isSaving ? '#CCCCCC' : colors.primary }]}
               onPress={handleManualEntry}
               disabled={isSaving}
             >
-               <Text style={[styles.saveButtonText, { color: colors.surface }]}>
+              <Text style={[styles.saveButtonText, { color: colors.surface }]}>
                 {isSaving ? 'Saving...' : 'Save Transaction'}
               </Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }
 
@@ -427,7 +440,7 @@ const styles = StyleSheet.create({
   downloadButton: { padding: 8, borderRadius: 6, backgroundColor: 'rgba(76, 175, 80, 0.1)', marginLeft: 8 },
   emptyContainer: { alignItems: "center", padding: 40 },
   emptyText: { textAlign: "center", fontStyle: "italic", fontSize: 16, marginTop: 12 },
-  
+
   // Modal Styles
   modalContainer: { flex: 1 },
   modalHeaderGradient: { paddingTop: 5, paddingBottom: 5 },

@@ -11,13 +11,16 @@ import {
   Platform,
   ActivityIndicator,
   StatusBar,
-  Alert
+  Alert,
+  Animated
 } from "react-native";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { chatService } from "../services/apiClient";
 import Markdown from 'react-native-markdown-display';
 import PortfolioReport from '../components/PortfolioReport';
+import { LinearGradient } from "expo-linear-gradient";
+import AnimatedHeader from "../components/AnimatedHeader";
 
 export default function ChatScreen({ navigation }) {
   const { colors } = useTheme();
@@ -33,7 +36,11 @@ export default function ChatScreen({ navigation }) {
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRetraining, setIsRetraining] = useState(false);
+
   const flatListRef = useRef(null);
+
+  // Animation
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const suggestedQuestions = [
     { label: "📊 90-Day Analysis", query: "Analyze my income and spending over the last 90 days." },
@@ -319,44 +326,40 @@ export default function ChatScreen({ navigation }) {
     >
       <StatusBar backgroundColor={colors.surface} barStyle="dark-content" />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary} />
-        </TouchableOpacity>
-
-        <View style={styles.headerContent}>
-          <View style={[styles.aiAvatar, { backgroundColor: colors.primary }]}>
-            <MaterialCommunityIcons name="robot" size={20} color={colors.surface} />
-          </View>
-          <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.primary }]}>
-              Finance AI
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.onSurface }]}>
-              Data-Driven Insights
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.menuButton} onPress={clearChat}>
-          <MaterialCommunityIcons name="autorenew" size={24} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
+      <AnimatedHeader
+        title="Finance AI"
+        subtitle="Data-Driven Insights"
+        scrollY={scrollY}
+        navigation={navigation}
+        showBack={true}
+        rightComponent={
+          <TouchableOpacity onPress={clearChat} style={{ padding: 8 }}>
+            <MaterialCommunityIcons name="autorenew" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Messages List with Footer */}
-      <FlatList
+      <Animated.FlatList
         ref={flatListRef}
         data={messages}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderMessage}
         style={styles.messagesList}
-        contentContainerStyle={styles.messagesContent}
+        contentContainerStyle={[styles.messagesContent, { paddingTop: 100 }]}
         showsVerticalScrollIndicator={false}
         ListFooterComponent={renderFooter}
+        ListHeaderComponent={
+          <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.primary }}>Finance AI</Text>
+            <Text style={{ fontSize: 14, color: colors.onSurface, opacity: 0.7 }}>Data-Driven Insights</Text>
+          </View>
+        }
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
       />
 
       {/* Input Section */}

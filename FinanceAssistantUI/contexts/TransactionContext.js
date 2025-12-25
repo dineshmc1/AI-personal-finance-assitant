@@ -158,7 +158,7 @@ export const TransactionProvider = ({ children }) => {
           id: tx.id,
           type: tx.type === 'Income' ? 'income' : 'expend',
           category: tx.category,
-          amount: tx.amount,
+          amount: parseFloat(tx.amount || 0),
           // === 修复：安全处理日期 ===
           // 如果 transaction_date 存在，则转换；否则默认今天，防止崩溃
           date: tx.transaction_date ? new Date(tx.transaction_date) : new Date(),
@@ -214,6 +214,7 @@ export const TransactionProvider = ({ children }) => {
         setTransactions(prev => [newTransaction, ...prev]);
 
         if (transaction.type === 'expend') await loadBudgets();
+        await loadAccounts();
       }
     } catch (error) {
       console.error("Failed to save transaction:", error);
@@ -244,6 +245,7 @@ export const TransactionProvider = ({ children }) => {
         body: JSON.stringify(payload)
       });
       if (updatedTx.type === 'expend') await loadBudgets();
+      await loadAccounts();
     } catch (error) {
       console.error("Failed to update transaction:", error);
       setTransactions(oldTransactions);
@@ -258,6 +260,7 @@ export const TransactionProvider = ({ children }) => {
     try {
       await apiRequest(`/transactions/${transactionId}`, { method: 'DELETE' });
       if (targetTx && targetTx.type === 'expend') await loadBudgets();
+      await loadAccounts();
     } catch (error) {
       console.error("Failed to delete transaction:", error);
       setTransactions(oldTransactions);
@@ -277,19 +280,11 @@ export const TransactionProvider = ({ children }) => {
       const extractedTransactions = await apiUpload(`/transactions/vlm/extract/${accountId}`, formData);
 
       if (extractedTransactions && Array.isArray(extractedTransactions)) {
-        const formattedTransactions = extractedTransactions.map(tx => ({
-          id: tx.id,
-          type: tx.type === 'Income' ? 'income' : 'expend',
-          category: tx.category,
-          amount: tx.amount,
-          date: new Date(tx.transaction_date),
-          description: tx.merchant || 'Unknown Merchant',
-          icon: getCategoryIcon(tx.category, categories),
-          time: new Date().toTimeString().substring(0, 5)
-        }));
-        setTransactions(prev => [...formattedTransactions, ...prev]);
+        // Refresh all data to ensure consistency
+        await loadTransactions();
         await loadBudgets();
-        return formattedTransactions.length;
+        await loadAccounts();
+        return extractedTransactions.length;
       }
       return 0;
     } catch (error) {

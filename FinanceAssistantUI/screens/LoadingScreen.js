@@ -20,13 +20,13 @@ export default function LoadingScreen({ navigation }) {
     <View style={[styles.container, { backgroundColor: colors.primary }]}>
       <View style={styles.logoContainer}>
         {/* App Icon */}
-        <MaterialCommunityIcons 
-          name="finance" 
-          size={100} 
-          color={colors.surface} 
+        <MaterialCommunityIcons
+          name="finance"
+          size={100}
+          color={colors.surface}
         />
         <Text style={[styles.appName, { color: colors.surface }]}>
-          Finance Assistant
+          FINI
         </Text>
         <Text style={[styles.loadingText, { color: colors.surface }]}>
           Loading...

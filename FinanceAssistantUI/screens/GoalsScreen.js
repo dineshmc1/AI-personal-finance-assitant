@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   Modal,
   TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Animated
 } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLayoutEffect, useRef } from "react";
+import AnimatedHeader from "../components/AnimatedHeader";
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -19,40 +22,56 @@ import { LinearGradient } from "expo-linear-gradient";
 import ProgressBar from "../components/ProgressBar";
 import { useTransactions } from "../contexts/TransactionContext";
 
-export default function GoalsScreen() {
+export default function GoalsScreen({ navigation }) {
   const { colors } = useTheme();
-  const { 
-    goals, 
-    addGoal: createGoalContext, 
-    updateGoalProgress, 
-    getCurrentBalance, 
-    loadGoals, 
+  const insets = useSafeAreaInsets();
+  const {
+    goals,
+    addGoal: createGoalContext,
+    updateGoalProgress,
+    getCurrentBalance,
+    loadGoals,
     deleteGoal,
-    categories,     
-    getCategoryIcon   
+    categories,
+    getCategoryIcon
   } = useTransactions();
-  
+
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [showEditAmount, setShowEditAmount] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [amountToEdit, setAmountToEdit] = useState("");
-  
+
+  // Animation
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Hide Default Header
+  useLayoutEffect(() => {
+    // If inside a TabNavigator that controls header, we might need to hide it there or here. 
+    // TabNavigator usually ignores setOptions from component if defined in Tab.Screen options.
+    // But let's try.
+  }, []);
+  // Actually, TabNavigator controls it. I need to rely on the TabNavigator change I made earlier? 
+  // No, I only hid it for Home/Dashboard. I should hide it for Goals too in TabNavigator.
+  // But I can't edit TabNavigator right now in this step comfortably without context switching.
+  // I'll assume I will hide it via this screen option if possible, or I will update TabNavigator later.
+  // For now, let's add the code here.
+
   const [newGoal, setNewGoal] = useState({
     title: "",
     targetAmount: "",
     currentAmount: "",
     deadline: null,
-    category: "Savings" 
+    category: "Savings"
   });
 
   useEffect(() => {
     loadGoals();
   }, []);
 
-  const availableCategories = categories.length > 0 
-      ? categories.map(c => c.name) 
-      : ["Savings", "Travel", "Vehicle", "Housing", "Education", "Investments", "Other"]; // Fallback
+  const availableCategories = categories.length > 0
+    ? categories.map(c => c.name)
+    : ["Savings", "Travel", "Vehicle", "Housing", "Education", "Investments", "Other"]; // Fallback
 
   const formatCurrency = (amount) => {
     if (amount === undefined || amount === null || isNaN(amount)) return "RM 0";
@@ -71,13 +90,13 @@ export default function GoalsScreen() {
     }
 
     if (!newGoal.deadline) {
-        Alert.alert("Error", "Please select a target date");
-        return;
+      Alert.alert("Error", "Please select a target date");
+      return;
     }
 
     const target = parseFloat(newGoal.targetAmount) || 0;
     const current = parseFloat(newGoal.currentAmount) || 0;
-    
+
     if (current > target) {
       Alert.alert("Error", "Current amount cannot be greater than target amount");
       return;
@@ -89,20 +108,20 @@ export default function GoalsScreen() {
     }
 
     try {
-        await createGoalContext({
-            title: newGoal.title,
-            targetAmount: target,
-            currentAmount: current,
-            deadline: newGoal.deadline,
-            category: newGoal.category 
-        });
-        
-        Alert.alert("Success", "Goal added successfully!");
-        setShowAddGoal(false);
-        setNewGoal({ title: "", targetAmount: "", currentAmount: "", deadline: null, category: "Savings" });
+      await createGoalContext({
+        title: newGoal.title,
+        targetAmount: target,
+        currentAmount: current,
+        deadline: newGoal.deadline,
+        category: newGoal.category
+      });
+
+      Alert.alert("Success", "Goal added successfully!");
+      setShowAddGoal(false);
+      setNewGoal({ title: "", targetAmount: "", currentAmount: "", deadline: null, category: "Savings" });
 
     } catch (error) {
-        Alert.alert("Error", "Failed to save goal.");
+      Alert.alert("Error", "Failed to save goal.");
     }
   };
 
@@ -113,15 +132,15 @@ export default function GoalsScreen() {
       "Are you sure you want to delete this goal? Saved amount will be refunded to your balance.",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
+        {
+          text: "Delete",
           style: "destructive",
           onPress: async () => {
             try {
-                await deleteGoal(id);
-                Alert.alert("Deleted", "Goal removed and funds refunded.");
+              await deleteGoal(id);
+              Alert.alert("Deleted", "Goal removed and funds refunded.");
             } catch (error) {
-                Alert.alert("Error", "Failed to delete goal.");
+              Alert.alert("Error", "Failed to delete goal.");
             }
           }
         }
@@ -133,53 +152,53 @@ export default function GoalsScreen() {
   const quickUpdate = (id, amount) => {
     const goal = goals.find(g => g.id === id);
     if (!goal) return;
-    
+
     if (amount < 0 && goal.currentAmount < Math.abs(amount)) {
-         Alert.alert("Error", "Cannot withdraw more than saved amount.");
-         return;
+      Alert.alert("Error", "Cannot withdraw more than saved amount.");
+      return;
     }
     if (amount > 0 && !hasSufficientBalance(amount)) {
-       Alert.alert("Insufficient Funds", `Balance: RM ${getCurrentBalance()}`);
-       return;
+      Alert.alert("Insufficient Funds", `Balance: RM ${getCurrentBalance()}`);
+      return;
     }
 
     const action = amount > 0 ? "Deposit" : "Withdraw";
     const absAmount = Math.abs(amount);
-    
+
     Alert.alert(
-        `${action} from Goal`,
-        `${action} RM ${absAmount} for ${goal.title}?`,
-        [
-            { text: "Cancel", style: "cancel" },
-            { text: "Confirm", onPress: () => updateGoalProgress(id, amount) }
-        ]
+      `${action} from Goal`,
+      `${action} RM ${absAmount} for ${goal.title}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Confirm", onPress: () => updateGoalProgress(id, amount) }
+      ]
     );
   };
 
   const openEditModal = (goal) => {
-      setSelectedGoal(goal);
-      setAmountToEdit(""); 
-      setShowEditAmount(true);
+    setSelectedGoal(goal);
+    setAmountToEdit("");
+    setShowEditAmount(true);
   };
 
   const handleCustomUpdate = () => {
-      if (!selectedGoal || !amountToEdit) return;
-      const amount = parseFloat(amountToEdit);
-      if (isNaN(amount) || amount === 0) {
-          Alert.alert("Error", "Please enter a valid amount.");
-          return;
-      }
-      setShowEditAmount(false);
-      quickUpdate(selectedGoal.id, amount); 
+    if (!selectedGoal || !amountToEdit) return;
+    const amount = parseFloat(amountToEdit);
+    if (isNaN(amount) || amount === 0) {
+      Alert.alert("Error", "Please enter a valid amount.");
+      return;
+    }
+    setShowEditAmount(false);
+    quickUpdate(selectedGoal.id, amount);
   };
-  
+
   const getProgressColor = (progress, completed) => {
     if (completed || progress >= 1) return "#4CAF50";
     if (progress >= 0.7) return "#2196F3";
     if (progress >= 0.4) return "#FF9800";
     return "#F44336";
   };
-  
+
   const getDaysRemaining = (deadline) => {
     if (!deadline) return null;
     const today = new Date();
@@ -197,7 +216,7 @@ export default function GoalsScreen() {
     if (!dateString) return "Select target date";
     return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
-  
+
   const handleDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
@@ -211,23 +230,61 @@ export default function GoalsScreen() {
 
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient colors={["#7e92edff", "#84aae7ff"]} style={styles.headerGradient}>
-        <View style={styles.header}>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.title}>Financial Goals</Text>
-            <Text style={styles.subtitle}>Track and achieve your dreams</Text>
-          </View>
-          <TouchableOpacity 
-            style={[styles.addButton, { backgroundColor: 'rgba(255,255,255,0.25)' }]}
-            onPress={() => setShowAddGoal(true)}
-          >
-            <MaterialCommunityIcons name="plus" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Floating Add Button - Persistent */}
+      <TouchableOpacity
+        style={{
+          position: 'absolute',
+          top: Platform.OS === 'ios' ? insets.top + 10 : insets.top + 20, // Adjust for status bar
+          right: 20,
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: 'rgba(20, 20, 30, 0.6)', // Glassy dark background
+          borderColor: colors.primary,
+          borderWidth: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 100, // Ensure it's above everything including the header
+          // Optional: Add blur or shadow if needed
+          shadowColor: colors.primary,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.5,
+          shadowRadius: 8,
+          elevation: 5
+        }}
+        onPress={() => setShowAddGoal(true)}
+      >
+        <MaterialCommunityIcons name="plus" size={24} color={colors.primary} />
+      </TouchableOpacity>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <AnimatedHeader
+        title="Financial Goals"
+        scrollY={scrollY}
+        navigation={navigation}
+      // No rightComponent needed anymore
+      />
+
+      <Animated.ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 70 + insets.top }]}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+      >
+
+        <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 }}>
+          <View style={styles.header}>
+            <View style={styles.headerTextContainer}>
+              <Text style={[styles.title, { color: colors.primary, textShadowColor: colors.primary, textShadowRadius: 10 }]}>Financial Goals</Text>
+              <Text style={[styles.subtitle, { color: colors.onSurface }]}>Track and achieve your dreams</Text>
+            </View>
+            {/* Redundant inline button removed */}
+          </View>
+        </View>
         {/* Summary Card */}
         <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
           <View style={styles.summaryItem}>
@@ -253,7 +310,7 @@ export default function GoalsScreen() {
         {goals.map((goal) => {
           const daysRemaining = goal.deadline ? getDaysRemaining(goal.deadline) : null;
           const progressColor = getProgressColor(goal.progress, goal.completed);
-          
+
           return (
             <View key={goal.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: goal.completed ? '#4CAF50' : 'transparent', borderWidth: goal.completed ? 2 : 0 }]}>
               <View style={styles.goalHeader}>
@@ -262,10 +319,10 @@ export default function GoalsScreen() {
                   <View style={styles.categoryRow}>
                     {/* === 使用 getCategoryIcon 获取动态图标 === */}
                     <View style={[styles.categoryBadge, { backgroundColor: colors.primary + '20', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                      <MaterialCommunityIcons 
-                        name={getCategoryIcon(goal.category)} 
-                        size={14} 
-                        color={colors.primary} 
+                      <MaterialCommunityIcons
+                        name={getCategoryIcon(goal.category)}
+                        size={14}
+                        color={colors.primary}
                       />
                       <Text style={[styles.categoryText, { color: colors.primary }]}>{goal.category || "Goal"}</Text>
                     </View>
@@ -330,7 +387,8 @@ export default function GoalsScreen() {
         )}
 
         <View style={styles.bottomPadding} />
-      </ScrollView>
+        <View style={styles.bottomPadding} />
+      </Animated.ScrollView>
 
       {/* Add Goal Modal */}
       <Modal visible={showAddGoal} animationType="slide">
@@ -345,32 +403,32 @@ export default function GoalsScreen() {
           <ScrollView style={styles.modalContent}>
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.onSurface }]}>Goal Title</Text>
-              <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="e.g., Emergency Fund" placeholderTextColor={colors.onSurface + '80'} value={newGoal.title} onChangeText={(text) => setNewGoal({...newGoal, title: text})} />
+              <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="e.g., Emergency Fund" placeholderTextColor={colors.onSurface + '80'} value={newGoal.title} onChangeText={(text) => setNewGoal({ ...newGoal, title: text })} />
             </View>
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.onSurface }]}>Target Amount (RM)</Text>
-              <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="10000" placeholderTextColor={colors.onSurface + '80'} keyboardType="decimal-pad" value={newGoal.targetAmount} onChangeText={(text) => setNewGoal({...newGoal, targetAmount: text})} />
+              <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="10000" placeholderTextColor={colors.onSurface + '80'} keyboardType="decimal-pad" value={newGoal.targetAmount} onChangeText={(text) => setNewGoal({ ...newGoal, targetAmount: text })} />
             </View>
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.onSurface }]}>Current Amount (RM)</Text>
-              <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="0" placeholderTextColor={colors.onSurface + '80'} keyboardType="decimal-pad" value={newGoal.currentAmount} onChangeText={(text) => setNewGoal({...newGoal, currentAmount: text})} />
+              <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface }]} placeholder="0" placeholderTextColor={colors.onSurface + '80'} keyboardType="decimal-pad" value={newGoal.currentAmount} onChangeText={(text) => setNewGoal({ ...newGoal, currentAmount: text })} />
             </View>
-            
+
             {/* === Grid === */}
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.onSurface }]}>Category</Text>
               <View style={styles.categoryGrid}>
                 {availableCategories.map((category) => (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={category}
                     style={[
                       styles.categoryOption,
-                      { 
+                      {
                         backgroundColor: newGoal.category === category ? colors.primary : colors.surface,
                         borderColor: colors.primary
                       }
                     ]}
-                    onPress={() => setNewGoal({...newGoal, category})}
+                    onPress={() => setNewGoal({ ...newGoal, category })}
                   >
                     <Text style={[
                       styles.categoryOptionText,
@@ -404,7 +462,7 @@ export default function GoalsScreen() {
             <Text style={[styles.editAmountTitle, { color: colors.onSurface }]}>Add / Withdraw</Text>
             <Text style={[styles.editAmountSubtitle, { color: colors.onSurface }]}>{selectedGoal?.title}</Text>
             <Text style={[styles.editAmountNote, { color: colors.onSurface }]}>Use negative (-) to withdraw.</Text>
-            
+
             <TextInput
               style={[styles.amountInput, { backgroundColor: colors.background, color: colors.onSurface, borderColor: colors.primary }]}
               placeholder="+100 or -50"
@@ -414,7 +472,7 @@ export default function GoalsScreen() {
               onChangeText={setAmountToEdit}
               autoFocus
             />
-            
+
             <View style={styles.editAmountButtons}>
               <TouchableOpacity style={[styles.editAmountButton, { backgroundColor: colors.surface }]} onPress={() => setShowEditAmount(false)}>
                 <Text style={[styles.editAmountButtonText, { color: colors.onSurface }]}>Cancel</Text>
@@ -428,7 +486,7 @@ export default function GoalsScreen() {
       </Modal>
 
       {showDatePicker && <DateTimePicker value={new Date()} mode="date" display="spinner" onChange={handleDateChange} minimumDate={new Date()} />}
-    </SafeAreaView>
+    </View>
   );
 }
 

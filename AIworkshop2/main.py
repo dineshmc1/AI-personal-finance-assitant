@@ -24,7 +24,7 @@ from budgeter import generate_auto_budget, analyze_recent_transactions
 from debt import debt_router
 from twin import twin_router, generate_twin_logic
 from fastapi.responses import FileResponse
-from pathlib import Path
+
 import os
 from fastapi.middleware.cors import CORSMiddleware
 import datetime
@@ -473,7 +473,7 @@ async def generate_one_tap_budget(
     
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    current_dir = Path(__file__).resolve().parent
+    current_dir = PathLib(__file__).resolve().parent
     favicon_path = current_dir.parent / "FinanceAssistantUI" / "assets" / "favicon.png"
     
     if favicon_path.exists():
@@ -655,7 +655,7 @@ from budgeter import generate_auto_budget, analyze_recent_transactions
 from debt import debt_router
 from twin import twin_router, generate_twin_logic
 from fastapi.responses import FileResponse
-from pathlib import Path
+
 import os
 from fastapi.middleware.cors import CORSMiddleware
 import datetime
@@ -960,7 +960,7 @@ async def simulate_user_question(
                 transaction_data['transaction_date'] = transaction_data['transaction_date'].isoformat()
             transactions.append(transaction_data)
 
-        if len(transactions) < 30: 
+        if len(transactions) < 1: 
             print(f"User {user_id} has less than 30 transactions. Switching to General Chat mode.")
             general_response = await generate_general_chat_response(user_question)
             return {

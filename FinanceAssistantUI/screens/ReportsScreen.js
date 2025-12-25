@@ -7,8 +7,11 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     RefreshControl,
-    Dimensions
+    Dimensions,
+    Animated
 } from "react-native";
+import { useRef } from "react";
+import AnimatedHeader from "../components/AnimatedHeader";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,6 +26,7 @@ export default function ReportsScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [reportData, setReportData] = useState(null);
     const [error, setError] = useState(null);
+    const scrollY = useRef(new Animated.Value(0)).current;
 
     const loadOptimizationReport = async () => {
         try {
@@ -114,25 +118,33 @@ export default function ReportsScreen({ navigation }) {
         );
     }
 
-    if (!reportData) return null;
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <LinearGradient colors={["#1E88E5", "#1565C0"]} style={styles.header}>
-                <View style={styles.headerContent}>
-                    <View>
-                        <Text style={styles.headerTitle}>AI Portfolio Optimization</Text>
-                        <Text style={styles.headerSubtitle}>Reinforcement Learning (PPO) Model</Text>
-                    </View>
-                    <MaterialCommunityIcons name="brain" size={32} color="white" style={{ opacity: 0.8 }} />
-                </View>
-            </LinearGradient>
-
-            <ScrollView
+            <AnimatedHeader
+                title="AI Analysis"
+                scrollY={scrollY}
+                navigation={navigation}
+            />
+            <Animated.ScrollView
                 style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: 100 }]}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
             >
+                <LinearGradient colors={[colors.primary, colors.secondary]} style={styles.header}>
+                    <View style={styles.headerContent}>
+                        <View>
+                            <Text style={styles.headerTitle}>AI Portfolio Optimization</Text>
+                            <Text style={styles.headerSubtitle}>Reinforcement Learning (PPO) Model</Text>
+                        </View>
+                        <MaterialCommunityIcons name="brain" size={32} color="white" style={{ opacity: 0.8 }} />
+                    </View>
+                </LinearGradient>
                 <PortfolioReport
                     report={reportData}
                     onRetrain={handleRetrain}
@@ -140,7 +152,8 @@ export default function ReportsScreen({ navigation }) {
                 />
 
                 <View style={{ height: 20 }} />
-            </ScrollView>
+                <View style={{ height: 20 }} />
+            </Animated.ScrollView>
         </View>
     );
 }

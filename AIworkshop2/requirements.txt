@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+python-multipart
+firebase-admin
+pandas
+numpy
+scikit-learn
+torch
+python-dotenv
+requests
+openai
+pdf2image
+yfinance
+gymnasium
+stable-baselines3
+google-cloud-firestore
+google-cloud-storage

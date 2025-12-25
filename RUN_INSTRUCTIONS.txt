@@ -1,0 +1,84 @@
+# How to Run the AI Personal Finance Assistant Project
+
+This project consists of two main components:
+1. **Backend**: A Python FastAPI application located in the `AIworkshop2` directory.
+2. **Frontend**: A React Native (Expo) application located in the `FinanceAssistantUI` directory.
+
+You will need two separate terminal windows to run both simultaneously.
+
+---
+
+## Prerequisites
+
+- **Python 3.8+** installed.
+- **Node.js** and **npm** installed.
+- **Expo CLI** (optional, mostly handled by npx).
+
+---
+
+## 1. Setting up and Running the Backend
+
+The backend handles the API logic and database connections.
+
+1.  **Open a terminal** and navigate to the backend directory:
+    ```bash
+    cd AIworkshop2
+    ```
+
+2.  **Create and activate a virtual environment** (Recommended):
+    - **Windows**:
+        ```powershell
+        python -m venv venv
+        .\venv\Scripts\activate
+        ```
+    - **Mac/Linux**:
+        ```bash
+        python3 -m venv venv
+        source venv/bin/activate
+        ```
+
+3.  **Install Python Dependencies**:
+    Install all required packages using the newly created `requirements.txt` file:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    Start the FastAPI server using `uvicorn` (with host 0.0.0.0 to allow mobile connection):
+    ```bash
+    uvicorn main:app --reload --host 0.0.0.0
+    ```
+    The server should start running at `http://0.0.0.0:8000`.
+
+---
+
+## 2. Setting up and Running the Frontend
+
+The frontend is the mobile application interface.
+
+1.  **Open a NEW terminal** and navigate to the frontend directory:
+    ```bash
+    cd FinanceAssistantUI
+    ```
+
+2.  **Install Node Dependencies**:
+    ```bash
+    npm install
+    ```
+
+3.  **Start the Expo Development Server**:
+    ```bash
+    npx expo start
+    ```
+
+4.  **Launch the App**:
+    - **Physical Device**: Scan the QR code displayed in the terminal with the **Expo Go** app (Android/iOS).
+    - **Android Emulator**: Press `a` in the terminal.
+    - **iOS Simulator**: Press `i` in the terminal (Mac only).
+    - **Web**: Press `w` to run in the browser.
+
+---
+
+## Troubleshooting
+
+-   **Backend Connection**: Ensure the frontend knows where the backend is running. If you are testing on a physical device, `localhost` (127.0.0.1) will not work. You may need to update the API base URL in the frontend code to your computer's local IP address (e.g., `192.168.1.x`).
+-   **Firebase Key**: The backend requires `serviceAccountKey.json`. Ensure this file exists in the `AIworkshop2` directory.

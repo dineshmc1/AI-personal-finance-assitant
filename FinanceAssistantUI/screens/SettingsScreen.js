@@ -10,8 +10,11 @@ import {
   Alert,
   Modal,
   TextInput,
-  ActivityIndicator
+  ActivityIndicator,
+  Animated
 } from "react-native";
+import { useRef } from "react";
+import AnimatedHeader from "../components/AnimatedHeader";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTransactions } from "../contexts/TransactionContext";
@@ -20,9 +23,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }) {
   const { colors } = useTheme();
   const { transactions, clearAllTransactions } = useTransactions();
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const [settings, setSettings] = useState({
     // App Settings
@@ -38,7 +42,7 @@ export default function SettingsScreen() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const { currency, updateCurrency: setGlobalCurrency } = useSettings();
+  const { currency, updateCurrency: setGlobalCurrency, isDarkMode, toggleTheme } = useSettings();
   const [newCurrency, setNewCurrency] = useState(currency);
 
   const handleChangeCurrency = async () => {
@@ -142,8 +146,8 @@ export default function SettingsScreen() {
         {
           label: "Dark Mode",
           description: "Switch between light and dark theme",
-          value: settings.darkMode,
-          onToggle: () => toggleSetting('darkMode'),
+          value: isDarkMode,
+          onToggle: toggleTheme,
           icon: "theme-light-dark"
         },
         {
@@ -208,237 +212,252 @@ export default function SettingsScreen() {
   ];
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.primary }]}>Settings</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedHeader
+        title="Settings"
+        scrollY={scrollY}
+        navigation={navigation}
+      />
+      <Animated.ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 100, paddingBottom: 100 }]}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+      >
+        <Text style={[styles.title, { color: colors.primary, textShadowColor: colors.primary, textShadowRadius: 10 }]}>Settings</Text>
 
-      {/* App Statistics */}
-      <View style={[styles.statsCard, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.statsTitle, { color: colors.onSurface }]}>App Statistics</Text>
-        <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons name="swap-horizontal" size={24} color={colors.primary} />
-            <Text style={[styles.statNumber, { color: colors.primary }]}>{appStats.totalTransactions}</Text>
-            <Text style={[styles.statLabel, { color: colors.onSurface }]}>Transactions</Text>
+        {/* App Statistics */}
+        <View style={[styles.statsCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.statsTitle, { color: colors.onSurface }]}>App Statistics</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <MaterialCommunityIcons name="swap-horizontal" size={24} color={colors.primary} />
+              <Text style={[styles.statNumber, { color: colors.primary }]}>{appStats.totalTransactions}</Text>
+              <Text style={[styles.statLabel, { color: colors.onSurface }]}>Transactions</Text>
+            </View>
+            <View style={styles.statItem}>
+              <MaterialCommunityIcons name="trending-up" size={24} color="#4CAF50" />
+              <Text style={[styles.statNumber, { color: "#4CAF50" }]}>
+                RM {appStats.totalIncome.toLocaleString()}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.onSurface }]}>Total Income</Text>
+            </View>
+            <View style={styles.statItem}>
+              <MaterialCommunityIcons name="trending-down" size={24} color="#F44336" />
+              <Text style={[styles.statNumber, { color: "#F44336" }]}>
+                RM {appStats.totalExpenses.toLocaleString()}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.onSurface }]}>Total Expenses</Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons name="trending-up" size={24} color="#4CAF50" />
-            <Text style={[styles.statNumber, { color: "#4CAF50" }]}>
-              RM {appStats.totalIncome.toLocaleString()}
+        </View>
+
+        {/* Currency Selection */}
+        <View style={[styles.currencySection, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Currency</Text>
+          <TouchableOpacity
+            style={[styles.currencyButton, { borderColor: colors.primary }]}
+            onPress={() => setShowCurrencyModal(true)}
+          >
+            <MaterialCommunityIcons name="currency-usd" size={20} color={colors.primary} />
+            <Text style={[styles.currencyText, { color: colors.onSurface }]}>
+              {currency} - {currencyOptions.find(c => c.code === currency)?.name}
             </Text>
-            <Text style={[styles.statLabel, { color: colors.onSurface }]}>Total Income</Text>
-          </View>
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons name="trending-down" size={24} color="#F44336" />
-            <Text style={[styles.statNumber, { color: "#F44336" }]}>
-              RM {appStats.totalExpenses.toLocaleString()}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.onSurface }]}>Total Expenses</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Currency Selection */}
-      <View style={[styles.currencySection, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Currency</Text>
-        <TouchableOpacity
-          style={[styles.currencyButton, { borderColor: colors.primary }]}
-          onPress={() => setShowCurrencyModal(true)}
-        >
-          <MaterialCommunityIcons name="currency-usd" size={20} color={colors.primary} />
-          <Text style={[styles.currencyText, { color: colors.onSurface }]}>
-            {currency} - {currencyOptions.find(c => c.code === currency)?.name}
-          </Text>
-          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Settings Sections */}
-      {settingSections.map((section, sectionIndex) => (
-        <View key={sectionIndex} style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name={section.icon} size={20} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{section.title}</Text>
-          </View>
-
-          <View style={styles.sectionContent}>
-            {section.items.map((item, itemIndex) => (
-              <TouchableOpacity
-                key={itemIndex}
-                style={[
-                  styles.settingItem,
-                  { backgroundColor: colors.surface },
-                  item.destructive && { borderLeftColor: '#F44336', borderLeftWidth: 4 }
-                ]}
-                onPress={item.type === 'action' ? item.onPress : undefined}
-                disabled={item.loading}
-              >
-                <View style={styles.settingLeft}>
-                  <MaterialCommunityIcons
-                    name={item.icon}
-                    size={22}
-                    color={item.destructive ? '#F44336' : colors.primary}
-                  />
-                  <View style={styles.settingInfo}>
-                    <Text style={[
-                      styles.settingLabel,
-                      { color: item.destructive ? '#F44336' : colors.onSurface }
-                    ]}>
-                      {item.label}
-                    </Text>
-                    <Text style={[styles.settingDescription, { color: colors.onSurface }]}>
-                      {item.description}
-                    </Text>
-                  </View>
-                </View>
-
-                {item.type === 'action' ? (
-                  item.loading ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <MaterialCommunityIcons
-                      name="chevron-right"
-                      size={20}
-                      color={item.destructive ? '#F44336' : colors.onSurface}
-                    />
-                  )
-                ) : (
-                  <Switch
-                    value={item.value}
-                    onValueChange={item.onToggle}
-                    trackColor={{ false: colors.outline, true: colors.primary + '80' }}
-                    thumbColor={item.value ? colors.primary : colors.surface}
-                  />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      ))}
-
-      {/* App Information */}
-      <View style={[styles.infoSection, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.infoTitle, { color: colors.onSurface }]}>App Information</Text>
-
-        <View style={styles.infoItem}>
-          <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Version</Text>
-          <Text style={[styles.infoValue, { color: colors.primary }]}>1.0.0</Text>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.infoItem}>
-          <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Build Date</Text>
-          <Text style={[styles.infoValue, { color: colors.primary }]}>March 2024</Text>
-        </View>
-
-        <View style={styles.infoItem}>
-          <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Developer</Text>
-          <Text style={[styles.infoValue, { color: colors.primary }]}>Finance Assistant Team</Text>
-        </View>
-      </View>
-
-      {/* Currency Selection Modal */}
-      <Modal visible={showCurrencyModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.primary }]}>Select Currency</Text>
-              <TouchableOpacity onPress={() => setShowCurrencyModal(false)}>
-                <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
-              </TouchableOpacity>
+        {/* Settings Sections */}
+        {settingSections.map((section, sectionIndex) => (
+          <View key={sectionIndex} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name={section.icon} size={20} color={colors.primary} />
+              <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{section.title}</Text>
             </View>
 
-            <ScrollView style={styles.currencyList}>
-              {currencyOptions.map((currency) => (
+            <View style={styles.sectionContent}>
+              {section.items.map((item, itemIndex) => (
                 <TouchableOpacity
-                  key={currency.code}
+                  key={itemIndex}
                   style={[
-                    styles.currencyOption,
-                    {
-                      backgroundColor: newCurrency === currency.code ? colors.primary + '20' : 'transparent',
-                      borderColor: colors.outline
-                    }
+                    styles.settingItem,
+                    { backgroundColor: colors.surface },
+                    item.destructive && { borderLeftColor: '#F44336', borderLeftWidth: 4 }
                   ]}
-                  onPress={() => setNewCurrency(currency.code)}
+                  onPress={item.type === 'action' ? item.onPress : undefined}
+                  disabled={item.loading}
                 >
-                  <View style={styles.currencyInfo}>
-                    <Text style={[styles.currencyCode, { color: colors.primary }]}>
-                      {currency.symbol} {currency.code}
-                    </Text>
-                    <Text style={[styles.currencyName, { color: colors.onSurface }]}>
-                      {currency.name}
-                    </Text>
+                  <View style={styles.settingLeft}>
+                    <MaterialCommunityIcons
+                      name={item.icon}
+                      size={22}
+                      color={item.destructive ? '#F44336' : colors.primary}
+                    />
+                    <View style={styles.settingInfo}>
+                      <Text style={[
+                        styles.settingLabel,
+                        { color: item.destructive ? '#F44336' : colors.onSurface }
+                      ]}>
+                        {item.label}
+                      </Text>
+                      <Text style={[styles.settingDescription, { color: colors.onSurface }]}>
+                        {item.description}
+                      </Text>
+                    </View>
                   </View>
-                  {newCurrency === currency.code && (
-                    <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
+
+                  {item.type === 'action' ? (
+                    item.loading ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name="chevron-right"
+                        size={20}
+                        color={item.destructive ? '#F44336' : colors.onSurface}
+                      />
+                    )
+                  ) : (
+                    <Switch
+                      value={item.value}
+                      onValueChange={item.onToggle}
+                      trackColor={{ false: colors.outline, true: colors.primary + '80' }}
+                      thumbColor={item.value ? colors.primary : colors.surface}
+                    />
                   )}
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.surface }]}
-                onPress={() => setShowCurrencyModal(false)}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleChangeCurrency}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.surface }]}>Apply</Text>
-              </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        ))}
 
-      {/* Reset Confirmation Modal */}
-      <Modal visible={showResetModal} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <MaterialCommunityIcons name="alert" size={32} color="#F44336" />
-              <Text style={[styles.modalTitle, { color: colors.primary }]}>Reset All Data</Text>
-            </View>
+        {/* App Information */}
+        <View style={[styles.infoSection, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.infoTitle, { color: colors.onSurface }]}>App Information</Text>
 
-            <Text style={[styles.modalMessage, { color: colors.onSurface }]}>
-              This will permanently delete:
-              {"\n\n"}
-              • All transactions
-              {"\n"}
-              • Budget settings
-              {"\n"}
-              • Financial goals
-              {"\n"}
-              • App preferences
-              {"\n\n"}
-              This action cannot be undone!
-            </Text>
+          <View style={styles.infoItem}>
+            <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Version</Text>
+            <Text style={[styles.infoValue, { color: colors.primary }]}>1.0.0</Text>
+          </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.surface }]}
-                onPress={() => setShowResetModal(false)}
-                disabled={isResetting}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#F44336' }]}
-                onPress={handleClearData}
-                disabled={isResetting}
-              >
-                {isResetting ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={[styles.modalButtonText, { color: 'white' }]}>Delete All</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+          <View style={styles.infoItem}>
+            <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Build Date</Text>
+            <Text style={[styles.infoValue, { color: colors.primary }]}>March 2024</Text>
+          </View>
+
+          <View style={styles.infoItem}>
+            <Text style={[styles.infoLabel, { color: colors.onSurface }]}>Developer</Text>
+            <Text style={[styles.infoValue, { color: colors.primary }]}>Finance Assistant Team</Text>
           </View>
         </View>
-      </Modal>
-    </ScrollView>
+
+        {/* Currency Selection Modal */}
+        <Modal visible={showCurrencyModal} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.primary }]}>Select Currency</Text>
+                <TouchableOpacity onPress={() => setShowCurrencyModal(false)}>
+                  <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.currencyList}>
+                {currencyOptions.map((currency) => (
+                  <TouchableOpacity
+                    key={currency.code}
+                    style={[
+                      styles.currencyOption,
+                      {
+                        backgroundColor: newCurrency === currency.code ? colors.primary + '20' : 'transparent',
+                        borderColor: colors.outline
+                      }
+                    ]}
+                    onPress={() => setNewCurrency(currency.code)}
+                  >
+                    <View style={styles.currencyInfo}>
+                      <Text style={[styles.currencyCode, { color: colors.primary }]}>
+                        {currency.symbol} {currency.code}
+                      </Text>
+                      <Text style={[styles.currencyName, { color: colors.onSurface }]}>
+                        {currency.name}
+                      </Text>
+                    </View>
+                    {newCurrency === currency.code && (
+                      <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.surface }]}
+                  onPress={() => setShowCurrencyModal(false)}
+                >
+                  <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={handleChangeCurrency}
+                >
+                  <Text style={[styles.modalButtonText, { color: colors.surface }]}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Reset Confirmation Modal */}
+        <Modal visible={showResetModal} animationType="fade" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <MaterialCommunityIcons name="alert" size={32} color="#F44336" />
+                <Text style={[styles.modalTitle, { color: colors.primary }]}>Reset All Data</Text>
+              </View>
+
+              <Text style={[styles.modalMessage, { color: colors.onSurface }]}>
+                This will permanently delete:
+                {"\n\n"}
+                • All transactions
+                {"\n"}
+                • Budget settings
+                {"\n"}
+                • Financial goals
+                {"\n"}
+                • App preferences
+                {"\n\n"}
+                This action cannot be undone!
+              </Text>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.surface }]}
+                  onPress={() => setShowResetModal(false)}
+                  disabled={isResetting}
+                >
+                  <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: '#F44336' }]}
+                  onPress={handleClearData}
+                  disabled={isResetting}
+                >
+                  {isResetting ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text style={[styles.modalButtonText, { color: 'white' }]}>Delete All</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </Animated.ScrollView>
+    </View>
   );
 }
 

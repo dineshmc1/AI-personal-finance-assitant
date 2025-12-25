@@ -1,5 +1,12 @@
 {
   "expo": {
+    "name": "FinanceAssistantUI",
+    "slug": "finance-assistant-ui",
+    "version": "1.0.0",
+    "android": {
+        "usesCleartextTraffic": true,
+        "package": "com.finance.assistant"
+    },
     "plugins": [
       [
         "expo-camera",

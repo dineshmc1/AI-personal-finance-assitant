@@ -1,14 +1,15 @@
 // screens/DashboardScreen.js
-import React, { useState, useMemo, useEffect } from "react";
-import { 
-  ScrollView, 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from "react";
+import {
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
   Dimensions,
   RefreshControl,
-  Modal
+  Modal,
+  Animated
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from "react-native-paper";
@@ -18,25 +19,36 @@ import { useTransactions } from "../contexts/TransactionContext";
 import ProgressBar from "../components/ProgressBar";
 import SummaryCard from "../components/SummaryCard";
 import { apiRequest } from "../services/apiClient";
+import AnimatedHeader from "../components/AnimatedHeader";
 
 const { width, height } = Dimensions.get('window');
 
 export default function DashboardScreen({ navigation }) {
   const { colors } = useTheme();
-  const { 
-    transactions, 
-    budgets = [], 
-    calendarEvents = {}, 
-    loadTransactions, 
-    loadBudgets, 
-    loadCalendarEvents 
+  const {
+    transactions,
+    budgets = [],
+    calendarEvents = {},
+    loadTransactions,
+    loadBudgets,
+    loadCalendarEvents
   } = useTransactions();
 
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState('month');
   const [chartModalVisible, setChartModalVisible] = useState(false);
   const [selectedChartType, setSelectedChartType] = useState('income');
-  
+
+  // === Animation State ===
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Hide Default Header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
+
   // === Twin Data State ===
   const [twinData, setTwinData] = useState(null);
   const loadTwinData = async () => {
@@ -56,7 +68,7 @@ export default function DashboardScreen({ navigation }) {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
 
@@ -69,8 +81,8 @@ export default function DashboardScreen({ navigation }) {
         dayEvents.forEach(event => {
           if (event.type === 'Bill Due' || event.type === 'User Bill') {
             const diffTime = Math.abs(eventDate - today);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
             bills.push({
               ...event,
               date: eventDate,
@@ -82,15 +94,15 @@ export default function DashboardScreen({ navigation }) {
       }
     });
 
-    return bills.sort((a, b) => a.date - b.date).slice(0, 3); 
+    return bills.sort((a, b) => a.date - b.date).slice(0, 3);
   }, [calendarEvents]);
 
 
   // === 1. Calculate financial metrics (Income, Expense, Savings) ===
   const financialData = useMemo(() => {
     const currentDate = new Date();
-    currentDate.setHours(23, 59, 59, 999); 
-    
+    currentDate.setHours(23, 59, 59, 999);
+
     let startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
 
@@ -98,22 +110,22 @@ export default function DashboardScreen({ navigation }) {
 
     switch (timeRange) {
       case 'week':
-        startDate.setDate(currentDate.getDate() - 6); 
+        startDate.setDate(currentDate.getDate() - 6);
         break;
       case 'month':
-        startDate.setDate(1); 
+        startDate.setDate(1);
         break;
       case 'year':
-        startDate.setMonth(0, 1); 
+        startDate.setMonth(0, 1);
         break;
       default:
         startDate.setDate(1);
     }
 
     const filteredTransactions = safeTransactions.filter(t => {
-        if (!t.date) return false;
-        const tDate = new Date(t.date);
-        return tDate >= startDate && tDate <= currentDate;
+      if (!t.date) return false;
+      const tDate = new Date(t.date);
+      return tDate >= startDate && tDate <= currentDate;
     });
 
     const income = filteredTransactions
@@ -148,12 +160,12 @@ export default function DashboardScreen({ navigation }) {
       }, {});
 
     const topSpendingCategories = Object.entries(categorySpending)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
       .map(([category, amount]) => ({ category, amount }));
 
     const topIncomeCategories = Object.entries(categoryIncome)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
       .map(([category, amount]) => ({ category, amount }));
 
@@ -171,13 +183,13 @@ export default function DashboardScreen({ navigation }) {
   // === 2. Budget progress calculation ===
   const budgetProgress = useMemo(() => {
     const safeBudgets = Array.isArray(budgets) ? budgets : [];
-    
+
     let totalBudget = safeBudgets.reduce((sum, b) => sum + (b.allocated || 0), 0);
-    
+
     if (timeRange === 'week') {
-        totalBudget = totalBudget / 4.3; 
+      totalBudget = totalBudget / 4.3;
     } else if (timeRange === 'year') {
-        totalBudget = totalBudget * 12;
+      totalBudget = totalBudget * 12;
     }
 
     const totalSpent = financialData.expenses;
@@ -194,16 +206,16 @@ export default function DashboardScreen({ navigation }) {
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([
-        loadTransactions(), 
-        loadBudgets(),
-        loadCalendarEvents(), 
-        loadTwinData()        
+      loadTransactions(),
+      loadBudgets(),
+      loadCalendarEvents(),
+      loadTwinData()
     ]);
     setRefreshing(false);
   };
 
   const getCategoryIcon = (category) => {
-    return 'cash'; 
+    return 'cash';
   };
 
   const formatAmount = (amount) => {
@@ -215,20 +227,20 @@ export default function DashboardScreen({ navigation }) {
     return Math.max((amount / maxAmount) * 100, 10);
   };
 
-   const recentTransactions = useMemo(() => {
+  const recentTransactions = useMemo(() => {
     if (!Array.isArray(transactions)) return [];
-    
+
     return [...transactions]
       .filter(t => t !== null && t !== undefined)
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 3);
   }, [transactions]);
 
-  const maxSpending = financialData.topSpendingCategories.length > 0 
+  const maxSpending = financialData.topSpendingCategories.length > 0
     ? Math.max(...financialData.topSpendingCategories.map(item => item.amount))
     : 0;
-  
-  const maxIncome = financialData.topIncomeCategories.length > 0 
+
+  const maxIncome = financialData.topIncomeCategories.length > 0
     ? Math.max(...financialData.topIncomeCategories.map(item => item.amount))
     : 0;
 
@@ -328,14 +340,14 @@ export default function DashboardScreen({ navigation }) {
               </Text>
             </View>
             <View style={styles.barTrack}>
-              <View 
+              <View
                 style={[
                   styles.barFill,
-                  { 
+                  {
                     width: `${getBarWidth(item.amount, maxAmount)}%`,
                     backgroundColor: item.color
                   }
-                ]} 
+                ]}
               />
             </View>
             <Text style={[styles.barPercentage, { color: colors.onSurface }]}>
@@ -349,47 +361,52 @@ export default function DashboardScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <AnimatedHeader title="Dashboard" scrollY={scrollY} navigation={navigation} />
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 75 }]}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
         }
-        contentContainerStyle={styles.scrollContent}
+
       >
         {/* Header Section */}
-        <LinearGradient colors={["#7e92edff", "#84aae7ff"]} style={styles.header}>
-          <View style={styles.headerContent}>
-            <View style={styles.welcomeSection}>
-              <Text style={styles.welcomeText}>Welcome Back!</Text>
-              <Text style={styles.subtitle}>Here's your financial overview</Text>
-            </View>
-            
-            {/* Time Range Selector */}
-            <View style={styles.timeRangeSelector}>
-              {[
-                { key: 'week', label: 'Week' },
-                { key: 'month', label: 'Month' },
-                { key: 'year', label: 'Year' }
-              ].map((range) => (
-                <TouchableOpacity
-                  key={range.key}
-                  style={[
-                    styles.timeRangeButton,
-                    timeRange === range.key && styles.timeRangeButtonActive
-                  ]}
-                  onPress={() => setTimeRange(range.key)}
-                >
-                  <Text style={[
-                    styles.timeRangeText,
-                    timeRange === range.key && styles.timeRangeTextActive
-                  ]}>
-                    {range.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+        <View style={styles.header}>
+          <View style={styles.welcomeSection}>
+            <Text style={[styles.welcomeText, { color: colors.primary, textShadowColor: colors.primary, textShadowRadius: 10 }]}>Welcome Back!</Text>
+            <Text style={[styles.subtitle, { color: colors.onSurface }]}>Here's your financial overview</Text>
           </View>
-        </LinearGradient>
+
+          {/* Time Range Selector */}
+          <View style={styles.timeRangeSelector}>
+            {[
+              { key: 'week', label: 'Week' },
+              { key: 'month', label: 'Month' },
+              { key: 'year', label: 'Year' }
+            ].map((range) => (
+              <TouchableOpacity
+                key={range.key}
+                style={[
+                  styles.timeRangeButton,
+                  timeRange === range.key && { backgroundColor: colors.primary, borderColor: colors.primary }
+                ]}
+                onPress={() => setTimeRange(range.key)}
+              >
+                <Text style={[
+                  styles.timeRangeText,
+                  timeRange === range.key ? { color: colors.background, fontWeight: 'bold' } : { color: colors.onSurface }
+                ]}>
+                  {range.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         {/* Quick Stats Section */}
         <View style={styles.quickStatsSection}>
@@ -407,7 +424,7 @@ export default function DashboardScreen({ navigation }) {
               type="expense"
             />
           </View>
-          
+
           <View style={styles.statsRow}>
             <SummaryCard
               title="Net Savings"
@@ -425,33 +442,33 @@ export default function DashboardScreen({ navigation }) {
 
         {/* === Twin Battle Card === */}
         {twinData && (
-          <TouchableOpacity 
-            style={[styles.section, { padding: 0, overflow: 'hidden' }]} 
+          <TouchableOpacity
+            style={[styles.section, { padding: 0, overflow: 'hidden' }]}
             onPress={() => navigation.navigate('Twin')}
           >
             <LinearGradient
-                colors={['#6A11CB', '#2575FC']} 
-                start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-                style={{ padding: 20 }}
+              colors={['#6A11CB', '#2575FC']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={{ padding: 20 }}
             >
-                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <View style={{flex: 1}}>
-                        <Text style={{color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 'bold', marginBottom: 4}}>FINANCIAL BATTLE</Text>
-                        <Text style={{color: 'white', fontSize: 16, fontWeight: 'bold'}}>
-                            {twinData.battle_status.includes("Winning") || twinData.battle_status.includes("UNSTOPPABLE") 
-                                ? "🏆 You are winning!" 
-                                : "⚔️ Keep pushing!"}
-                        </Text>
-                        <Text style={{color: 'white', fontSize: 12, opacity: 0.8, marginTop: 4}}>
-                            Vs. {twinData.easy_twin.savings < twinData.user_stats.savings ? "Easy Twin" : "Twins"}
-                        </Text>
-                    </View>
-                    
-                    <View style={{alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12}}>
-                        <Text style={{color: 'white', fontSize: 10, fontWeight: 'bold'}}>LEVEL</Text>
-                        <Text style={{color: '#FFD700', fontSize: 24, fontWeight: 'bold'}}>{twinData.gamification_profile.level}</Text>
-                    </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>FINANCIAL BATTLE</Text>
+                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                    {twinData.battle_status.includes("Winning") || twinData.battle_status.includes("UNSTOPPABLE")
+                      ? "🏆 You are winning!"
+                      : "⚔️ Keep pushing!"}
+                  </Text>
+                  <Text style={{ color: 'white', fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+                    Vs. {twinData.easy_twin.savings < twinData.user_stats.savings ? "Easy Twin" : "Twins"}
+                  </Text>
                 </View>
+
+                <View style={{ alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12 }}>
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>LEVEL</Text>
+                  <Text style={{ color: '#FFD700', fontSize: 24, fontWeight: 'bold' }}>{twinData.gamification_profile.level}</Text>
+                </View>
+              </View>
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -496,9 +513,9 @@ export default function DashboardScreen({ navigation }) {
                 No bills due in the next 7 days.
               </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Calendar')}>
-                 <Text style={{ color: colors.primary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>
-                    Check Calendar
-                 </Text>
+                <Text style={{ color: colors.primary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>
+                  Check Calendar
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -532,7 +549,7 @@ export default function DashboardScreen({ navigation }) {
                 </View>
               </View>
 
-              <ProgressBar 
+              <ProgressBar
                 progress={budgetProgress.progress}
                 showPercentage={true}
                 variant={budgetProgress.progress > 0.8 ? "danger" : budgetProgress.progress > 0.6 ? "warning" : "primary"}
@@ -550,7 +567,7 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         {/* Interactive Income Chart Section */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.section, { backgroundColor: colors.surface }]}
           onPress={() => openChartModal('income')}
           activeOpacity={0.7}
@@ -602,7 +619,7 @@ export default function DashboardScreen({ navigation }) {
         </TouchableOpacity>
 
         {/* Interactive Spending Chart Section */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.section, { backgroundColor: colors.surface }]}
           onPress={() => openChartModal('spending')}
           activeOpacity={0.7}
@@ -674,7 +691,7 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         <View style={styles.bottomPadding} />
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Chart Modal */}
       <Modal
@@ -734,8 +751,8 @@ const styles = StyleSheet.create({
   welcomeSection: { alignItems: 'center', marginBottom: 20 },
   welcomeText: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 4 },
   subtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
-  timeRangeSelector: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 25, padding: 4 },
-  timeRangeButton: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
+  timeRangeSelector: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 25, padding: 4, alignSelf: 'stretch', justifyContent: 'space-between' },
+  timeRangeButton: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 20 },
   timeRangeButtonActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
   timeRangeText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' },
   timeRangeTextActive: { color: '#fff' },
@@ -820,7 +837,7 @@ const styles = StyleSheet.create({
   legendAmount: { fontSize: 14, fontWeight: 'bold' },
   legendPercentage: { fontSize: 12, opacity: 0.7, marginTop: 2 },
   modalBottomPadding: { height: 20 },
-  
+
   // === Bill Item  ===
   billItem: {
     flexDirection: 'row',

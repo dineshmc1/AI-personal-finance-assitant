@@ -1,5 +1,5 @@
 // screens/HomeScreen.js
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from "react";
 import {
   ScrollView,
   View,
@@ -10,20 +10,27 @@ import {
   Modal,
   Alert,
   Dimensions,
-  Platform
+  Platform,
+  StatusBar,
+  Animated,
+  RefreshControl
 } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTransactions } from "../contexts/TransactionContext";
+import GlassCard from "../components/GlassCard";
+import AnimatedHeader from "../components/AnimatedHeader";
 
 const { width } = Dimensions.get('window');
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const { colors } = useTheme();
-  // 1. Get transactions and actions from Context
+  const insets = useSafeAreaInsets();
+  const HEADER_HEIGHT = 70 + insets.top;
+
   const {
     transactions,
     accounts,
@@ -31,7 +38,10 @@ export default function HomeScreen() {
     deleteTransaction,
     categories,
     getCategoryIcon,
-    getMonthlyBalance
+    getMonthlyBalance,
+    loadTransactions,
+    loadAccounts,
+    loadBudgets
   } = useTransactions();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -39,13 +49,30 @@ export default function HomeScreen() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [fetchedMonthlyBalance, setFetchedMonthlyBalance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([loadTransactions(), loadAccounts(), loadBudgets()]);
+    setRefreshing(false);
+  };
 
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
+  // === Animation State ===
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Hide Default Header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
+
   // === 0. Fetch Monthly Balance ===
-  React.useEffect(() => {
+  useEffect(() => {
     let isMounted = true;
     const loadMonthly = async () => {
       const bal = await getMonthlyBalance(selectedDate.getFullYear(), selectedDate.getMonth() + 1);
@@ -56,34 +83,45 @@ export default function HomeScreen() {
   }, [selectedDate, transactions]);
 
   // === 0.5 Calculate Total Account Balance ===
-  const realTotalBalance = React.useMemo(() => {
+  const realTotalBalance = useMemo(() => {
     return accounts.reduce((acc, curr) => acc + (curr.current_balance || 0), 0);
   }, [accounts]);
 
   // === 2. Calculate available categories for Edit Modal ===
   const availableEditCategories = useMemo(() => {
     if (!editingTransaction) return [];
-
-    // Determine if we need Income or Expense categories
     let targetType = 'Expense';
     if (editingTransaction.type === 'income' || editingTransaction.type === 'Income') {
       targetType = 'Income';
     }
-
     return categories
       .filter(c => c.type === targetType)
       .map(c => c.name);
   }, [categories, editingTransaction]);
 
-  // === 3. Calculate Totals based on current MONTH (For Income/Expense Summary Only) ===
+  // === 3. Calculate Totals based on current MONTH ===
   const currentMonthTransactions = useMemo(() => {
-    if (!transactions) return [];
+    console.log("[HomeScreen] Total Transactions:", transactions.length);
+    const filtered = transactions.filter(t => {
+      if (!t.date) {
+        console.log("Excluding tx (no date):", t.description);
+        return false;
+      }
+      const tDate = new Date(t.date);
+      if (isNaN(tDate.getTime())) {
+        console.log("Excluding tx (invalid date):", t.description, t.date);
+        return false;
+      }
+      const match = tDate.getMonth() === selectedDate.getMonth() &&
+        tDate.getFullYear() === selectedDate.getFullYear();
 
-    return transactions.filter(t => {
-      if (!t.date) return false;
-      return t.date.getMonth() === selectedDate.getMonth() &&
-        t.date.getFullYear() === selectedDate.getFullYear();
+      if (!match) {
+        console.log(`Excluding tx: ${t.description} | Date: ${tDate.toDateString()} vs Selected: ${selectedDate.toDateString()}`);
+      }
+      return match;
     });
+    console.log("[HomeScreen] Filtered Transactions for", selectedDate.toDateString(), ":", filtered.length);
+    return filtered;
   }, [transactions, selectedDate]);
 
   const totalIncome = currentMonthTransactions
@@ -94,17 +132,13 @@ export default function HomeScreen() {
     .filter(t => t.type === 'expend' || t.type === 'Expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  // Removed old totalBalance calculation used for main display
-
   // === 4. Filter Transactions for Display ===
   const filteredTransactions = useMemo(() => {
     return currentMonthTransactions.filter(transaction => {
-      // Filter by Type (All / Expend / Income)
       const matchesFilter = activeFilter === 'all' ||
         (activeFilter === 'expend' && (transaction.type === 'expend' || transaction.type === 'Expense')) ||
         (activeFilter === 'income' && (transaction.type === 'income' || transaction.type === 'Income'));
 
-      // Filter by Search Query
       const description = transaction.description || "";
       const category = transaction.category || "";
       const matchesSearch =
@@ -115,7 +149,6 @@ export default function HomeScreen() {
     });
   }, [currentMonthTransactions, activeFilter, searchQuery]);
 
-  // Group transactions by Date for the list
   const getUniqueDates = () => {
     const dates = filteredTransactions.map(t => new Date(t.date).toDateString());
     return [...new Set(dates)].sort((a, b) => new Date(b) - new Date(a));
@@ -127,7 +160,6 @@ export default function HomeScreen() {
     );
   };
 
-  // === Date Navigation ===
   const changeMonth = (months) => {
     const newDate = new Date(selectedDate);
     newDate.setMonth(newDate.getMonth() + months);
@@ -141,7 +173,6 @@ export default function HomeScreen() {
     }
   };
 
-  // === Formatting ===
   const formatDate = (date) => {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
@@ -157,11 +188,9 @@ export default function HomeScreen() {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
   };
 
-  // === Edit / Delete Logic ===
   const handleEditTransaction = (transaction) => {
     setEditingTransaction({
       ...transaction,
-      // Ensure date is a string for TextInput (YYYY-MM-DD)
       date: new Date(transaction.date).toISOString().split('T')[0]
     });
     setShowEditModal(true);
@@ -204,72 +233,112 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <AnimatedHeader title="Home" scrollY={scrollY} navigation={navigation} />
+
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: HEADER_HEIGHT } // Dynamic padding to close the gap
+        ]}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+        }
+      >
+
+
 
         {/* === Header Card === */}
-        <LinearGradient colors={["#7e92edff", "#84aae7ff"]} style={styles.header}>
-          <View style={styles.headerContent}>
+        <View style={styles.headerContainer}>
+          <LinearGradient
+            colors={[colors.primary, colors.tertiary]} // Neon Cyan to Purple
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.header}
+          >
+            <SafeAreaView edges={['top']} style={styles.headerContent}>
 
-            {/* Total Balance */}
-            <View style={styles.balanceSection}>
-              <View style={{ alignItems: 'center', marginBottom: 15 }}>
-                <Text style={styles.balanceAmount}>RM {realTotalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                <Text style={styles.balanceLabel}>Total Balance</Text>
-              </View>
-
-              {/* Monthly Balance Row */}
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.balanceAmount, { fontSize: 22 }]}>
-                  RM {fetchedMonthlyBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Text>
-                <Text style={styles.balanceLabel}>Monthly Balance</Text>
-              </View>
-            </View>
-
-            {/* Date Navigation */}
-            <View style={styles.dateSection}>
-              <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.dateButton}>
-                <MaterialCommunityIcons name="chevron-left" size={24} color="#fff" />
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateDisplay}>
-                <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => changeMonth(1)} style={styles.dateButton}>
-                <MaterialCommunityIcons name="chevron-right" size={24} color="#fff" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Income / Expense Summary */}
-            <View style={styles.expenditureCard}>
-              <View style={styles.expenditureRow}>
-                <View style={styles.expenditureItem}>
-                  <Text style={styles.expenditureLabel}>Income</Text>
-                  <Text style={styles.incomeAmount}>RM {totalIncome.toLocaleString(undefined, { minimumFractionDigits: 0 })}</Text>
+              {/* Total Balance */}
+              <View style={styles.balanceSection}>
+                <View style={{ alignItems: 'center', marginBottom: 15 }}>
+                  <Text style={styles.balanceAmount}>RM {realTotalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                  <Text style={styles.balanceLabel}>Total Balance</Text>
                 </View>
-                <View style={[styles.divider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-                <View style={styles.expenditureItem}>
-                  <Text style={styles.expenditureLabel}>Expenses</Text>
-                  <Text style={styles.expenseAmount}>RM {totalExpenditure.toLocaleString(undefined, { minimumFractionDigits: 0 })}</Text>
+
+                {/* Monthly Balance Row */}
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={[styles.balanceAmount, { fontSize: 24, opacity: 0.9 }]}>
+                    RM {fetchedMonthlyBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text style={styles.balanceLabel}>Monthly Balance</Text>
                 </View>
               </View>
-            </View>
-          </View>
-        </LinearGradient>
+
+              {/* Date Navigation */}
+              <View style={styles.dateSection}>
+                <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.dateButton}>
+                  <MaterialCommunityIcons name="chevron-left" size={28} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateDisplay}>
+                  <GlassCard style={{ paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 }}>
+                    <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
+                  </GlassCard>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => changeMonth(1)} style={styles.dateButton}>
+                  <MaterialCommunityIcons name="chevron-right" size={28} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Income / Expense Summary */}
+              <GlassCard style={[styles.expenditureCard, { borderRadius: 30 }]} variant="dark">
+                <View style={styles.expenditureRow}>
+                  <View style={styles.expenditureItem}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <View style={{ padding: 8, backgroundColor: 'rgba(0, 230, 118, 0.2)', borderRadius: 20, marginRight: 8 }}>
+                        <MaterialCommunityIcons name="arrow-up" size={16} color="#00e676" />
+                      </View>
+                      <Text style={styles.expenditureLabel}>Income</Text>
+                    </View>
+                    <Text style={styles.incomeAmount}>RM {totalIncome.toLocaleString(undefined, { minimumFractionDigits: 0 })}</Text>
+                  </View>
+                  <View style={[styles.divider, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                  <View style={styles.expenditureItem}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <View style={{ padding: 8, backgroundColor: 'rgba(255, 23, 68, 0.2)', borderRadius: 20, marginRight: 8 }}>
+                        <MaterialCommunityIcons name="arrow-down" size={16} color="#ff1744" />
+                      </View>
+                      <Text style={styles.expenditureLabel}>Expenses</Text>
+                    </View>
+                    <Text style={styles.expenseAmount}>RM {totalExpenditure.toLocaleString(undefined, { minimumFractionDigits: 0 })}</Text>
+                  </View>
+                </View>
+              </GlassCard>
+            </SafeAreaView>
+          </LinearGradient>
+        </View>
 
         <View style={styles.mainContent}>
           {/* === Controls: Search & Filter === */}
           <View style={styles.controlSection}>
             {!showSearch ? (
-              <TouchableOpacity style={[styles.searchButton, { backgroundColor: colors.surface }]} onPress={() => setShowSearch(true)}>
-                <MaterialCommunityIcons name="magnify" size={20} color={colors.onSurface} />
-                <Text style={[styles.searchButtonText, { color: colors.onSurface }]}>Search transactions...</Text>
+              <TouchableOpacity onPress={() => setShowSearch(true)}>
+                <GlassCard style={styles.searchButton}>
+                  <MaterialCommunityIcons name="magnify" size={20} color={colors.primary} />
+                  <Text style={[styles.searchButtonText, { color: colors.onSurface }]}>Search transactions...</Text>
+                </GlassCard>
               </TouchableOpacity>
             ) : (
-              <View style={[styles.searchBar, { backgroundColor: colors.surface }]}>
-                <MaterialCommunityIcons name="magnify" size={20} color={colors.onSurface} />
+              <GlassCard style={styles.searchBar}>
+                <MaterialCommunityIcons name="magnify" size={20} color={colors.primary} />
                 <TextInput
                   style={[styles.searchInput, { color: colors.onSurface }]}
                   placeholder="Search..."
@@ -281,7 +350,7 @@ export default function HomeScreen() {
                 <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(""); }}>
                   <MaterialCommunityIcons name="close" size={20} color={colors.onSurface} />
                 </TouchableOpacity>
-              </View>
+              </GlassCard>
             )}
 
             <View style={styles.filterSection}>
@@ -292,26 +361,27 @@ export default function HomeScreen() {
               ].map((filter) => (
                 <TouchableOpacity
                   key={filter.key}
-                  style={[
-                    styles.filterButton,
-                    {
-                      backgroundColor: activeFilter === filter.key ? colors.primary : colors.surface,
-                      borderColor: colors.primary
-                    }
-                  ]}
+                  style={{ flex: 1, marginHorizontal: 4 }}
                   onPress={() => setActiveFilter(filter.key)}
                 >
-                  <MaterialCommunityIcons
-                    name={filter.icon}
-                    size={16}
-                    color={activeFilter === filter.key ? colors.surface : colors.primary}
-                  />
-                  <Text style={[
-                    styles.filterText,
-                    { color: activeFilter === filter.key ? colors.surface : colors.primary }
-                  ]}>
-                    {filter.label}
-                  </Text>
+                  <GlassCard
+                    style={[
+                      styles.filterButton,
+                      activeFilter === filter.key && { borderColor: colors.primary, backgroundColor: colors.primary + '20' }
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={filter.icon}
+                      size={16}
+                      color={activeFilter === filter.key ? colors.primary : colors.onSurface}
+                    />
+                    <Text style={[
+                      styles.filterText,
+                      { color: activeFilter === filter.key ? colors.primary : colors.onSurface }
+                    ]}>
+                      {filter.label}
+                    </Text>
+                  </GlassCard>
                 </TouchableOpacity>
               ))}
             </View>
@@ -325,48 +395,50 @@ export default function HomeScreen() {
 
               return (
                 <View key={dateStr} style={styles.dateGroup}>
-                  <Text style={[styles.dateHeader, { color: colors.onSurface }]}>
+                  <Text style={[styles.dateHeader, { color: colors.primary }]}>
                     {formatDisplayDate(dateObj)}
                   </Text>
 
                   {dayTransactions.map(transaction => {
                     const isIncome = transaction.type === 'income' || transaction.type === 'Income';
-                    const amountColor = isIncome ? '#4CAF50' : '#F44336';
+                    const amountColor = isIncome ? '#00e676' : '#ff1744';
 
                     return (
                       <TouchableOpacity
                         key={transaction.id}
-                        style={[styles.transactionItem, { backgroundColor: colors.surface }]}
                         onPress={() => handleEditTransaction(transaction)}
+                        style={{ marginBottom: 10 }}
                       >
-                        <View style={[styles.transactionIcon, { backgroundColor: colors.primary + '20' }]}>
-                          <MaterialCommunityIcons
-                            name={getCategoryIcon(transaction.category)}
-                            size={20}
-                            color={colors.primary}
-                          />
-                        </View>
+                        <GlassCard style={styles.transactionItem}>
+                          <View style={[styles.transactionIcon, { backgroundColor: colors.background, borderColor: colors.primary, borderWidth: 1 }]}>
+                            <MaterialCommunityIcons
+                              name={getCategoryIcon(transaction.category)}
+                              size={20}
+                              color={colors.primary}
+                            />
+                          </View>
 
-                        <View style={styles.transactionInfo}>
-                          <Text style={[styles.transactionCategory, { color: colors.onSurface }]}>
-                            {transaction.category}
-                          </Text>
-                          <Text
-                            style={[styles.transactionDescription, { color: colors.onSurface }]}
-                            numberOfLines={1}
-                          >
-                            {transaction.description}
-                          </Text>
-                        </View>
+                          <View style={styles.transactionInfo}>
+                            <Text style={[styles.transactionCategory, { color: colors.onSurface }]}>
+                              {transaction.category}
+                            </Text>
+                            <Text
+                              style={[styles.transactionDescription, { color: colors.onSurface }]}
+                              numberOfLines={1}
+                            >
+                              {transaction.description}
+                            </Text>
+                          </View>
 
-                        <View style={styles.transactionAmountSection}>
-                          <Text style={[styles.transactionAmount, { color: amountColor }]}>
-                            {isIncome ? '+' : '-'}RM {transaction.amount.toLocaleString()}
-                          </Text>
-                          <Text style={[styles.transactionTime, { color: colors.onSurface }]}>
-                            {transaction.time}
-                          </Text>
-                        </View>
+                          <View style={styles.transactionAmountSection}>
+                            <Text style={[styles.transactionAmount, { color: amountColor, textShadowColor: amountColor, textShadowRadius: 5 }]}>
+                              {isIncome ? '+' : '-'}RM {transaction.amount.toLocaleString()}
+                            </Text>
+                            <Text style={[styles.transactionTime, { color: colors.onSurface }]}>
+                              {transaction.time}
+                            </Text>
+                          </View>
+                        </GlassCard>
                       </TouchableOpacity>
                     );
                   })}
@@ -383,7 +455,7 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* === Date Picker Modal === */}
       {showDatePicker && (
@@ -396,196 +468,173 @@ export default function HomeScreen() {
       )}
 
       {/* === Edit Transaction Modal === */}
-      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
-        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: colors.primary }]}>Edit Transaction</Text>
-            <TouchableOpacity onPress={() => setShowEditModal(false)}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
-            </TouchableOpacity>
-          </View>
+      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet" transparent>
+        <View style={styles.modalOverlay}>
+          <GlassCard style={[styles.modalContainer, { backgroundColor: '#0a0e17' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.primary }]}>Edit Transaction</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
+              </TouchableOpacity>
+            </View>
 
-          {editingTransaction && (
-            <ScrollView style={styles.editForm}>
-              {/* Type Selection */}
-              <View style={styles.typeSelector}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    {
-                      backgroundColor: (editingTransaction.type === 'income' || editingTransaction.type === 'Income') ? colors.primary : colors.surface
-                    }
-                  ]}
-                  onPress={() => setEditingTransaction({ ...editingTransaction, type: 'income' })}
-                >
-                  <Text style={[
-                    styles.typeText,
-                    { color: (editingTransaction.type === 'income' || editingTransaction.type === 'Income') ? colors.surface : colors.primary }
-                  ]}>Income</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    {
-                      backgroundColor: (editingTransaction.type === 'expend' || editingTransaction.type === 'Expense') ? colors.primary : colors.surface
-                    }
-                  ]}
-                  onPress={() => setEditingTransaction({ ...editingTransaction, type: 'expend' })}
-                >
-                  <Text style={[
-                    styles.typeText,
-                    { color: (editingTransaction.type === 'expend' || editingTransaction.type === 'Expense') ? colors.surface : colors.primary }
-                  ]}>Expense</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Amount */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.onSurface }]}>Amount (RM)</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
-                  value={editingTransaction.amount.toString()}
-                  keyboardType="decimal-pad"
-                  onChangeText={(text) => setEditingTransaction({ ...editingTransaction, amount: text })}
-                />
-              </View>
-
-              {/* Category Grid */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.onSurface }]}>Category</Text>
-                {availableEditCategories.length === 0 && (
-                  <Text style={{ color: colors.onSurface, fontStyle: 'italic', marginBottom: 10, opacity: 0.6 }}>
-                    Select type to see categories...
-                  </Text>
-                )}
-                <View style={styles.categoryGrid}>
-                  {availableEditCategories.map((catName) => (
-                    <TouchableOpacity
-                      key={catName}
-                      style={[
-                        styles.categoryButton,
-                        {
-                          backgroundColor: editingTransaction.category === catName ? colors.primary : colors.surface,
-                          borderColor: colors.primary
-                        }
-                      ]}
-                      onPress={() => setEditingTransaction({ ...editingTransaction, category: catName })}
-                    >
-                      <MaterialCommunityIcons
-                        name={getCategoryIcon(catName)}
-                        size={16}
-                        color={editingTransaction.category === catName ? colors.surface : colors.primary}
-                      />
-                      <Text style={[
-                        styles.categoryText,
-                        { color: editingTransaction.category === catName ? colors.surface : colors.primary }
-                      ]}>
-                        {catName}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+            {editingTransaction && (
+              <ScrollView style={styles.editForm}>
+                {/* Type Selection */}
+                <View style={styles.typeSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      (editingTransaction.type === 'income' || editingTransaction.type === 'Income') && { backgroundColor: colors.primary + '30', borderColor: colors.primary, borderWidth: 1 }
+                    ]}
+                    onPress={() => setEditingTransaction({ ...editingTransaction, type: 'income' })}
+                  >
+                    <Text style={[
+                      styles.typeText,
+                      { color: (editingTransaction.type === 'income' || editingTransaction.type === 'Income') ? colors.primary : colors.onSurface }
+                    ]}>Income</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      (editingTransaction.type === 'expend' || editingTransaction.type === 'Expense') && { backgroundColor: colors.secondary + '30', borderColor: colors.secondary, borderWidth: 1 }
+                    ]}
+                    onPress={() => setEditingTransaction({ ...editingTransaction, type: 'expend' })}
+                  >
+                    <Text style={[
+                      styles.typeText,
+                      { color: (editingTransaction.type === 'expend' || editingTransaction.type === 'Expense') ? colors.secondary : colors.onSurface }
+                    ]}>Expense</Text>
+                  </TouchableOpacity>
                 </View>
-              </View>
 
-              {/* Description */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.onSurface }]}>Description</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
-                  value={editingTransaction.description}
-                  multiline
-                  numberOfLines={2}
-                  onChangeText={(text) => setEditingTransaction({ ...editingTransaction, description: text })}
-                />
-              </View>
-
-              {/* Date & Time */}
-              <View style={styles.row}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-                  <Text style={[styles.label, { color: colors.onSurface }]}>Date (YYYY-MM-DD)</Text>
+                {/* Amount */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.onSurface }]}>Amount (RM)</Text>
                   <TextInput
-                    style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
-                    value={editingTransaction.date}
-                    onChangeText={(text) => setEditingTransaction({ ...editingTransaction, date: text })}
-                    placeholder="YYYY-MM-DD"
+                    style={[styles.input, { backgroundColor: colors.surfaceVariant, color: colors.onSurface, borderColor: colors.outline }]}
+                    value={editingTransaction.amount.toString()}
+                    keyboardType="decimal-pad"
+                    onChangeText={(text) => setEditingTransaction({ ...editingTransaction, amount: text })}
                   />
                 </View>
-                <View style={[styles.inputGroup, { flex: 1 }]}>
-                  <Text style={[styles.label, { color: colors.onSurface }]}>Time (HH:MM)</Text>
+
+                {/* Category Grid */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.onSurface }]}>Category</Text>
+                  {availableEditCategories.length === 0 && (
+                    <Text style={{ color: colors.onSurface, fontStyle: 'italic', marginBottom: 10, opacity: 0.6 }}>
+                      Select type to see categories...
+                    </Text>
+                  )}
+                  <View style={styles.categoryGrid}>
+                    {availableEditCategories.map((catName) => (
+                      <TouchableOpacity
+                        key={catName}
+                        onPress={() => setEditingTransaction({ ...editingTransaction, category: catName })}
+                      >
+                        <View style={[
+                          styles.categoryButton,
+                          editingTransaction.category === catName
+                            ? { backgroundColor: colors.primary + '30', borderColor: colors.primary }
+                            : { borderColor: 'rgba(255,255,255,0.1)' }
+                        ]}>
+                          <MaterialCommunityIcons
+                            name={getCategoryIcon(catName)}
+                            size={16}
+                            color={editingTransaction.category === catName ? colors.primary : colors.onSurface}
+                          />
+                          <Text style={[
+                            styles.categoryText,
+                            { color: editingTransaction.category === catName ? colors.primary : colors.onSurface }
+                          ]}>
+                            {catName}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Description */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.onSurface }]}>Description</Text>
                   <TextInput
-                    style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
-                    value={editingTransaction.time}
-                    onChangeText={(text) => setEditingTransaction({ ...editingTransaction, time: text })}
-                    placeholder="HH:MM"
+                    style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceVariant, color: colors.onSurface, borderColor: colors.outline }]}
+                    value={editingTransaction.description}
+                    multiline
+                    numberOfLines={2}
+                    onChangeText={(text) => setEditingTransaction({ ...editingTransaction, description: text })}
                   />
                 </View>
-              </View>
 
-              {/* Action Buttons */}
-              <View style={styles.actionButtons}>
-                <TouchableOpacity style={[styles.deleteButton, { backgroundColor: '#FFEBEE', borderColor: '#F44336', borderWidth: 1 }]} onPress={handleDeleteTransaction}>
-                  <MaterialCommunityIcons name="delete" size={20} color="#F44336" />
-                  <Text style={[styles.deleteButtonText, { color: '#F44336' }]}>Delete</Text>
-                </TouchableOpacity>
+                {/* Action Buttons */}
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity style={[styles.deleteButton, { backgroundColor: '#FF174420', borderColor: '#FF1744', borderWidth: 1 }]} onPress={handleDeleteTransaction}>
+                    <MaterialCommunityIcons name="delete" size={20} color="#FF1744" />
+                    <Text style={[styles.deleteButtonText, { color: '#FF1744' }]}>Delete</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={saveEditedTransaction}>
-                  <MaterialCommunityIcons name="content-save" size={20} color={colors.surface} />
-                  <Text style={[styles.saveButtonText, { color: colors.surface }]}>Save Changes</Text>
-                </TouchableOpacity>
-              </View>
+                  <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={saveEditedTransaction}>
+                    <MaterialCommunityIcons name="content-save" size={20} color={colors.background} />
+                    <Text style={[styles.saveButtonText, { color: colors.background }]}>Save Changes</Text>
+                  </TouchableOpacity>
+                </View>
 
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          )}
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            )}
+          </GlassCard>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingBottom: 20 },
-  header: { paddingTop: 50, paddingBottom: 30, paddingHorizontal: 20, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
-  headerContent: { alignItems: 'center' },
-  balanceSection: { alignItems: 'center', marginBottom: 20 },
-  balanceAmount: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
-  balanceLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
-  dateSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  headerContainer: { overflow: 'hidden', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+  header: { paddingBottom: 30 },
+  headerContent: {},
+  balanceSection: { alignItems: 'center', marginBottom: 20, marginTop: 10 },
+  balanceAmount: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginBottom: 4, textShadowColor: 'rgba(255,255,255,0.5)', textShadowRadius: 10 },
+  balanceLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', letterSpacing: 1 },
+  dateSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, justifyContent: 'center' },
   dateButton: { padding: 8 },
   dateDisplay: { paddingHorizontal: 16 },
   dateText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  expenditureCard: { padding: 16, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', width: '100%' },
-  expenditureRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+  expenditureCard: { marginHorizontal: 20, padding: 20 },
+  expenditureRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   expenditureItem: { alignItems: 'center', flex: 1 },
-  divider: { width: 1, height: 30 },
-  expenditureLabel: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 4 },
-  incomeAmount: { fontSize: 16, fontWeight: 'bold', color: '#E8F5E8' },
-  expenseAmount: { fontSize: 16, fontWeight: 'bold', color: '#FFEBEE' },
+  divider: { width: 1, height: 40 },
+  expenditureLabel: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 4, letterSpacing: 1 },
+  incomeAmount: { fontSize: 18, fontWeight: 'bold', color: '#00e676', textShadowColor: '#00e676', textShadowRadius: 5 },
+  expenseAmount: { fontSize: 18, fontWeight: 'bold', color: '#ff1744', textShadowColor: '#ff1744', textShadowRadius: 5 },
 
-  mainContent: { flex: 1, marginTop: -35 },
+  mainContent: { flex: 1, marginTop: 20 },
 
-  controlSection: { paddingHorizontal: 16, marginBottom: 8, marginTop: 20 },
-  searchButton: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 12, elevation: 4 },
+  controlSection: { paddingHorizontal: 16, marginBottom: 15 },
+  searchButton: { flexDirection: 'row', alignItems: 'center', padding: 15, marginBottom: 15 },
   searchButtonText: { marginLeft: 8, fontSize: 14, opacity: 0.7 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 12, elevation: 4 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', padding: 15, marginBottom: 15 },
   searchInput: { flex: 1, marginLeft: 8, marginRight: 8, fontSize: 14 },
 
-  filterSection: { flexDirection: 'row', justifyContent: 'space-between' },
-  filterButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, flex: 1, marginHorizontal: 4, justifyContent: 'center' },
+  filterSection: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: -4 },
+  filterButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, justifyContent: 'center' },
   filterText: { fontSize: 12, fontWeight: '600', marginLeft: 4 },
 
   transactionsSection: { paddingHorizontal: 16, flex: 1 },
-  dateGroup: { marginBottom: 12 },
-  dateHeader: { fontSize: 13, fontWeight: 'bold', marginVertical: 8, opacity: 0.7, letterSpacing: 0.5 },
+  dateGroup: { marginBottom: 15 },
+  dateHeader: { fontSize: 14, fontWeight: 'bold', marginVertical: 8, opacity: 0.9, letterSpacing: 1, textTransform: 'uppercase' },
 
-  transactionItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 8, elevation: 2 },
+  transactionItem: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   transactionIcon: { padding: 10, borderRadius: 12, marginRight: 16 },
   transactionInfo: { flex: 1 },
-  transactionCategory: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  transactionCategory: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
   transactionDescription: { fontSize: 12, opacity: 0.7 },
   transactionAmountSection: { alignItems: 'flex-end' },
-  transactionAmount: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
+  transactionAmount: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   transactionTime: { fontSize: 11, opacity: 0.6 },
 
   emptyState: { alignItems: 'center', padding: 40, marginTop: 20 },
@@ -593,29 +642,29 @@ const styles = StyleSheet.create({
   emptySubtext: { fontSize: 14, textAlign: 'center', marginTop: 8, opacity: 0.6 },
 
   // Modal Styles
-  modalContainer: { flex: 1, padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  modalContainer: { height: '85%', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold' },
+  modalTitle: { fontSize: 24, fontWeight: 'bold' },
   editForm: { flex: 1 },
 
-  typeSelector: { flexDirection: 'row', marginBottom: 20, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E0E0E0' },
-  typeButton: { flex: 1, padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  typeSelector: { flexDirection: 'row', marginBottom: 20, gap: 10 },
+  typeButton: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)' },
   typeText: { fontSize: 14, fontWeight: '600', marginLeft: 8 },
 
   inputGroup: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
-  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16 },
-  textArea: { height: 80, textAlignVertical: 'top' },
-
-  row: { flexDirection: 'row' },
+  input: { borderWidth: 1, borderRadius: 12, padding: 15, fontSize: 16 },
+  textArea: { height: 100, textAlignVertical: 'top' },
 
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
   categoryButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, margin: 4, borderRadius: 20, borderWidth: 1 },
   categoryText: { fontSize: 12, fontWeight: '500', marginLeft: 4 },
 
-  actionButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 30 },
-  deleteButton: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, flex: 1, marginRight: 12, justifyContent: 'center' },
+  actionButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, marginBottom: 30 },
+  deleteButton: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, flex: 1, marginRight: 12, justifyContent: 'center' },
   deleteButtonText: { fontWeight: 'bold', marginLeft: 8 },
-  saveButton: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, flex: 2, justifyContent: 'center' },
+  saveButton: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, flex: 2, justifyContent: 'center' },
   saveButtonText: { fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
+  pageTitle: { fontSize: 34, fontWeight: 'bold', letterSpacing: 0.5 }, // Added style for large title
 });

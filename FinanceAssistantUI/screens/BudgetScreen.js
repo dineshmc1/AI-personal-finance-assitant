@@ -1,39 +1,45 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Alert, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
   RefreshControl,
   Modal,
   KeyboardAvoidingView,
-  Platform 
+
+  Platform,
+  Animated
 } from "react-native";
+import { useRef } from "react";
+import AnimatedHeader from "../components/AnimatedHeader";
 import { useTheme } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import ProgressBar from "../components/ProgressBar"; 
+import ProgressBar from "../components/ProgressBar";
 import { useTransactions } from "../contexts/TransactionContext";
 import { apiRequest } from '../services/apiClient';
 
-export default function BudgetScreen() {
+export default function BudgetScreen({ navigation }) {
   const { colors } = useTheme();
-  const { 
-    budgets, 
-    addBudget, 
-    updateBudget, 
-    loadBudgets, 
-    deleteBudget, 
-    categories 
+  const {
+    budgets,
+    addBudget,
+    updateBudget,
+    loadBudgets,
+    deleteBudget,
+    categories
   } = useTransactions();
 
   const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState(null); 
+  const [editingId, setEditingId] = useState(null);
   const [newBudget, setNewBudget] = useState({ category: "", allocated: "", period: "Monthly" });
   const [refreshing, setRefreshing] = useState(false);
+
   const [aiLoading, setAiLoading] = useState(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadBudgets();
@@ -50,19 +56,19 @@ export default function BudgetScreen() {
   const totalRemaining = totalAllocated - totalSpent;
 
   const openAddModal = () => {
-      setEditingId(null);
-      setNewBudget({ category: "", allocated: "", period: "Monthly" });
-      setShowModal(true);
+    setEditingId(null);
+    setNewBudget({ category: "", allocated: "", period: "Monthly" });
+    setShowModal(true);
   };
 
   const openEditModal = (budget) => {
-      setEditingId(budget.id);
-      setNewBudget({
-          category: budget.category,
-          allocated: String(budget.allocated),
-          period: budget.period || "Monthly"
-      });
-      setShowModal(true);
+    setEditingId(budget.id);
+    setNewBudget({
+      category: budget.category,
+      allocated: String(budget.allocated),
+      period: budget.period || "Monthly"
+    });
+    setShowModal(true);
   };
 
   const handleAutoFill = async () => {
@@ -73,23 +79,23 @@ export default function BudgetScreen() {
 
     setAiLoading(true);
     try {
-        const result = await apiRequest("/reports/budget/auto");
-        const suggestion = result.budget_allocation.find(b => b.category === newBudget.category);
-        
-        if (suggestion) {
-            setNewBudget({ ...newBudget, allocated: suggestion.amount.toString() });
-            Alert.alert(
-                "✨ AI Suggestion", 
-                `Based on your history, AI suggests a monthly budget of RM ${suggestion.amount} for ${newBudget.category}.`
-            );
-        } else {
-            Alert.alert("AI Suggestion", "Not enough data to suggest a budget for this category.");
-        }
+      const result = await apiRequest("/reports/budget/auto");
+      const suggestion = result.budget_allocation.find(b => b.category === newBudget.category);
+
+      if (suggestion) {
+        setNewBudget({ ...newBudget, allocated: suggestion.amount.toString() });
+        Alert.alert(
+          "✨ AI Suggestion",
+          `Based on your history, AI suggests a monthly budget of RM ${suggestion.amount} for ${newBudget.category}.`
+        );
+      } else {
+        Alert.alert("AI Suggestion", "Not enough data to suggest a budget for this category.");
+      }
     } catch (e) {
-        console.error(e);
-        Alert.alert("Error", "AI is currently unavailable.");
+      console.error(e);
+      Alert.alert("Error", "AI is currently unavailable.");
     } finally {
-        setAiLoading(false);
+      setAiLoading(false);
     }
   };
 
@@ -101,26 +107,26 @@ export default function BudgetScreen() {
 
     try {
       if (editingId) {
-          await updateBudget(editingId, {
-              category: newBudget.category, 
-              allocated: newBudget.allocated,
-              period: newBudget.period
-          });
-          Alert.alert("Success", "Budget updated successfully!");
+        await updateBudget(editingId, {
+          category: newBudget.category,
+          allocated: newBudget.allocated,
+          period: newBudget.period
+        });
+        Alert.alert("Success", "Budget updated successfully!");
       } else {
-          // --- Create Mode ---
-          const exists = budgets.find(b => b.category === newBudget.category);
-          if (exists) {
-              Alert.alert("Error", "Budget for this category already exists. Tap it to edit.");
-              return;
-          }
+        // --- Create Mode ---
+        const exists = budgets.find(b => b.category === newBudget.category);
+        if (exists) {
+          Alert.alert("Error", "Budget for this category already exists. Tap it to edit.");
+          return;
+        }
 
-          await addBudget({
-            category: newBudget.category,
-            allocated: newBudget.allocated,
-            period: newBudget.period
-          });
-          Alert.alert("Success", "Budget created successfully!");
+        await addBudget({
+          category: newBudget.category,
+          allocated: newBudget.allocated,
+          period: newBudget.period
+        });
+        Alert.alert("Success", "Budget created successfully!");
       }
       setShowModal(false);
       setNewBudget({ category: "", allocated: "", period: "Monthly" });
@@ -156,11 +162,21 @@ export default function BudgetScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
+      <AnimatedHeader
+        title="Budget Management"
+        scrollY={scrollY}
+        navigation={navigation}
+      />
+      <Animated.ScrollView
+        contentContainerStyle={{ padding: 15, paddingBottom: 100, paddingTop: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
       >
-        <Text style={[styles.title, { color: colors.primary }]}>Budget Management</Text>
+        <Text style={[styles.title, { color: colors.primary, textShadowColor: colors.primary, textShadowRadius: 10 }]}>Budget Management</Text>
 
         <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
           <View style={styles.summaryRow}>
@@ -187,61 +203,61 @@ export default function BudgetScreen() {
           {budgets.map((budget) => {
             const progress = budget.allocated > 0 ? budget.spent / budget.allocated : 0;
             const isOverBudget = budget.remaining < 0;
-            
-            const safeLimitText = budget.period === 'Monthly' 
-                ? `Weekly Safe Limit: RM ${(budget.dailyLimit * 7).toFixed(0)}`
-                : `Daily Safe Limit: RM ${budget.dailyLimit.toFixed(0)}`;
+
+            const safeLimitText = budget.period === 'Monthly'
+              ? `Weekly Safe Limit: RM ${(budget.dailyLimit * 7).toFixed(0)}`
+              : `Daily Safe Limit: RM ${budget.dailyLimit.toFixed(0)}`;
 
             return (
               <TouchableOpacity
-                  key={budget.id} 
-                  style={[styles.budgetItem, { backgroundColor: colors.surface }]}
-                  onPress={() => openEditModal(budget)} 
-                  onLongPress={() => handleDeleteBudget(budget)} 
-                  activeOpacity={0.7}
-                  delayLongPress={500}
+                key={budget.id}
+                style={[styles.budgetItem, { backgroundColor: colors.surface }]}
+                onPress={() => openEditModal(budget)}
+                onLongPress={() => handleDeleteBudget(budget)}
+                activeOpacity={0.7}
+                delayLongPress={500}
               >
                 <View style={styles.budgetHeader}>
                   <View style={styles.categoryInfo}>
                     <View style={[styles.colorDot, { backgroundColor: budget.color || colors.primary }]} />
                     <Text style={[styles.categoryName, { color: colors.onSurface }]}>
-                      {budget.category} 
-                      <Text style={{fontSize: 12, opacity: 0.6, fontWeight: 'normal'}}> ({budget.period})</Text>
+                      {budget.category}
+                      <Text style={{ fontSize: 12, opacity: 0.6, fontWeight: 'normal' }}> ({budget.period})</Text>
                     </Text>
                   </View>
                   <Text style={[styles.remaining, { color: isOverBudget ? "#F44336" : colors.onSurface }]}>
                     {isOverBudget ? `Over: RM ${Math.abs(budget.remaining).toFixed(0)}` : `Left: RM ${budget.remaining.toFixed(0)}`}
                   </Text>
                 </View>
-                
-                <ProgressBar 
-                  progress={Math.min(progress, 1)} 
-                  color={isOverBudget ? "#F44336" : (budget.color || colors.primary)} 
+
+                <ProgressBar
+                  progress={Math.min(progress, 1)}
+                  color={isOverBudget ? "#F44336" : (budget.color || colors.primary)}
                 />
-                
+
                 <View style={styles.budgetDetails}>
                   <Text style={[styles.amount, { color: colors.onSurface }]}>
                     {Math.round(progress * 100)}% Used
                   </Text>
                   {budget.remaining > 0 && (
-                      <Text style={[styles.percentage, { color: colors.primary }]}>
+                    <Text style={[styles.percentage, { color: colors.primary }]}>
                       {safeLimitText}
-                      </Text>
+                    </Text>
                   )}
                 </View>
               </TouchableOpacity>
             );
           })}
-          
+
           {budgets.length === 0 && (
-              <Text style={{textAlign: 'center', marginTop: 20, opacity: 0.5, color: colors.onSurface}}>
-                  No budgets set. Tap "+" to create one.
-              </Text>
+            <Text style={{ textAlign: 'center', marginTop: 20, opacity: 0.5, color: colors.onSurface }}>
+              No budgets set. Tap "+" to create one.
+            </Text>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.addButton, { backgroundColor: colors.primary }]}
         onPress={openAddModal}
       >
@@ -255,96 +271,96 @@ export default function BudgetScreen() {
         animationType="slide"
         onRequestClose={() => setShowModal(false)}
       >
-        <KeyboardAvoidingView 
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.modalOverlay}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
         >
-            <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.outline }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.outline }]}>
             <Text style={[styles.modalTitle, { color: colors.primary }]}>
-                {editingId ? "Edit Budget" : "New Budget"}
+              {editingId ? "Edit Budget" : "New Budget"}
             </Text>
-            
+
             <View style={styles.periodSelector}>
-                <TouchableOpacity 
-                    style={[styles.periodButton, { backgroundColor: newBudget.period === 'Monthly' ? colors.primary : colors.surface }]}
-                    onPress={() => setNewBudget({...newBudget, period: 'Monthly'})}
-                >
-                    <Text style={{color: newBudget.period === 'Monthly' ? 'white' : colors.primary, fontWeight: '600'}}>Monthly</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                    style={[styles.periodButton, { backgroundColor: newBudget.period === 'Weekly' ? colors.primary : colors.surface }]}
-                    onPress={() => setNewBudget({...newBudget, period: 'Weekly'})}
-                >
-                    <Text style={{color: newBudget.period === 'Weekly' ? 'white' : colors.primary, fontWeight: '600'}}>Weekly</Text>
-                </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.periodButton, { backgroundColor: newBudget.period === 'Monthly' ? colors.primary : colors.surface }]}
+                onPress={() => setNewBudget({ ...newBudget, period: 'Monthly' })}
+              >
+                <Text style={{ color: newBudget.period === 'Monthly' ? 'white' : colors.primary, fontWeight: '600' }}>Monthly</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.periodButton, { backgroundColor: newBudget.period === 'Weekly' ? colors.primary : colors.surface }]}
+                onPress={() => setNewBudget({ ...newBudget, period: 'Weekly' })}
+              >
+                <Text style={{ color: newBudget.period === 'Weekly' ? 'white' : colors.primary, fontWeight: '600' }}>Weekly</Text>
+              </TouchableOpacity>
             </View>
 
-            <Text style={[styles.label, {color: colors.onSurface}]}>
-                Category {editingId ? "(Locked)" : ":"}
+            <Text style={[styles.label, { color: colors.onSurface }]}>
+              Category {editingId ? "(Locked)" : ":"}
             </Text>
-            <ScrollView horizontal style={{marginBottom: 15, maxHeight: 50}} showsHorizontalScrollIndicator={false}>
-                {availableCategories.map(cat => {
-                    const isSelected = newBudget.category === cat;
-                    if (editingId && !isSelected) return null;
+            <ScrollView horizontal style={{ marginBottom: 15, maxHeight: 50 }} showsHorizontalScrollIndicator={false}>
+              {availableCategories.map(cat => {
+                const isSelected = newBudget.category === cat;
+                if (editingId && !isSelected) return null;
 
-                    return (
-                        <TouchableOpacity 
-                            key={cat} 
-                            disabled={!!editingId} 
-                            style={[
-                                styles.categoryChip, 
-                                { 
-                                    backgroundColor: isSelected ? colors.primary : colors.surface, 
-                                    borderColor: colors.primary,
-                                    opacity: (editingId && isSelected) ? 0.8 : 1 
-                                }
-                            ]}
-                            onPress={() => setNewBudget({...newBudget, category: cat})}
-                        >
-                            <Text style={{color: isSelected ? colors.surface : colors.primary}}>{cat}</Text>
-                        </TouchableOpacity>
-                    );
-                })}
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    disabled={!!editingId}
+                    style={[
+                      styles.categoryChip,
+                      {
+                        backgroundColor: isSelected ? colors.primary : colors.surface,
+                        borderColor: colors.primary,
+                        opacity: (editingId && isSelected) ? 0.8 : 1
+                      }
+                    ]}
+                    onPress={() => setNewBudget({ ...newBudget, category: cat })}
+                  >
+                    <Text style={{ color: isSelected ? colors.surface : colors.primary }}>{cat}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
-            
+
             <TextInput
-                style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
-                placeholder="Limit Amount (RM)"
-                placeholderTextColor={colors.onSurface}
-                keyboardType="decimal-pad"
-                value={newBudget.allocated}
-                onChangeText={(text) => setNewBudget({...newBudget, allocated: text})}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.onSurface, borderColor: colors.outline }]}
+              placeholder="Limit Amount (RM)"
+              placeholderTextColor={colors.onSurface}
+              keyboardType="decimal-pad"
+              value={newBudget.allocated}
+              onChangeText={(text) => setNewBudget({ ...newBudget, allocated: text })}
             />
 
             {!editingId && (
-                <TouchableOpacity 
-                    onPress={handleAutoFill} 
-                    style={{alignSelf: 'flex-end', marginBottom: 20, padding: 5}}
-                    disabled={aiLoading}
-                >
-                    <Text style={{color: colors.primary, fontWeight: '600'}}>
-                        {aiLoading ? "Thinking..." : "✨ Auto-fill with AI"}
-                    </Text>
-                </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAutoFill}
+                style={{ alignSelf: 'flex-end', marginBottom: 20, padding: 5 }}
+                disabled={aiLoading}
+              >
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                  {aiLoading ? "Thinking..." : "✨ Auto-fill with AI"}
+                </Text>
+              </TouchableOpacity>
             )}
-            
+
             <View style={styles.modalButtons}>
-                <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline }]}
                 onPress={() => setShowModal(false)}
-                >
+              >
                 <Text style={[styles.modalButtonText, { color: colors.onSurface }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.primary }]}
                 onPress={handleSubmit}
-                >
+              >
                 <Text style={[styles.modalButtonText, { color: colors.surface }]}>
-                    {editingId ? "Update" : "Save"}
+                  {editingId ? "Update" : "Save"}
                 </Text>
-                </TouchableOpacity>
+              </TouchableOpacity>
             </View>
-            </View>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -370,17 +386,17 @@ const styles = StyleSheet.create({
   amount: { fontSize: 12 },
   percentage: { fontSize: 12, fontWeight: "600" },
 
-  addButton: { 
-      position: 'absolute', 
-      bottom: 20, 
-      alignSelf: 'center', 
-      flexDirection: "row", 
-      alignItems: "center", 
-      justifyContent: "center", 
-      paddingVertical: 12,
-      paddingHorizontal: 24, 
-      borderRadius: 30, 
-      elevation: 5 
+  addButton: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    elevation: 5
   },
   addButtonText: { fontSize: 16, fontWeight: "600", marginLeft: 8 },
   modalOverlay: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 },

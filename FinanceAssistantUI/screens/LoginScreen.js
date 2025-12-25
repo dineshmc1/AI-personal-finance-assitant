@@ -65,7 +65,7 @@ const LoginScreen = () => {
           <View style={styles.header}>
             <MaterialCommunityIcons name="finance" size={48} color={colors.primary} />
             <Text style={[styles.title, { color: colors.primary }]}>
-              AI Finance Assistant
+              FINI
             </Text>
             <Text style={[styles.subtitle, { color: colors.onSurface }]}>
               {mode === MODES.LOGIN ? 'Welcome back' : 'Create your account'}

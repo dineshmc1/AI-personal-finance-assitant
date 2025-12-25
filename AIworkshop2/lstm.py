@@ -74,8 +74,34 @@ def generate_lstm_forecast(transactions: List[Dict[str, Any]]) -> Dict[str, Any]
         return {"error": str(e)}
 
     # === 优化：放宽一点限制，只要比 LOOKBACK 多一点就行 ===
-    if len(daily_summary) <= LOOKBACK: 
-        return {"error": f"Not enough historical data ({len(daily_summary)} days). Need > {LOOKBACK} days."}
+    # === Optimization: Relax restrictions for demo/new users ===
+    if len(daily_summary) < 1: 
+        return {"error": f"Not enough historical data ({len(daily_summary)} days). Need at least 1 day."}
+    
+    # If data is less than LOOKBACK, we will pad it later.
+    if len(daily_summary) <= LOOKBACK:
+        print(f"Warning: Low data mode ({len(daily_summary)} days). Forecast accuracy may be low.")
+        # Pad with initial state to allow model training
+        required_len = LOOKBACK + 5 # A bit more than lookback
+        missing = required_len - len(daily_summary)
+        
+        if missing > 0:
+            first_row = daily_summary.iloc[0]
+            start_date = first_row['date']
+            
+            # Create regression padding (constant values from first day)
+            padding_data = []
+            for i in range(missing):
+                prev_date = start_date - timedelta(days=(missing - i))
+                row = first_row.copy()
+                row['date'] = prev_date
+                # Adjust day features
+                row['day_of_week'] = prev_date.weekday()
+                row['day_of_month'] = prev_date.day
+                padding_data.append(row)
+                
+            padding_df = pd.DataFrame(padding_data)
+            daily_summary = pd.concat([padding_df, daily_summary], ignore_index=True)
 
     scaler_flow = MinMaxScaler(feature_range=(0, 1))
     scaler_time = MinMaxScaler(feature_range=(0, 1))
