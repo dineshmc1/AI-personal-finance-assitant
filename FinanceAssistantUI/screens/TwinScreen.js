@@ -80,9 +80,16 @@ export default function TwinScreen({ navigation }) {
         return (
             <View style={styles.twinRow}>
                 <View style={styles.twinHeader}>
-                    <Text style={[styles.twinLabel, { color: colors.onSurface }, isUser && { color: colors.primary, fontWeight: 'bold' }]}>
-                        {label}
-                    </Text>
+                    <View>
+                        <Text style={[styles.twinLabel, { color: colors.onSurface }, isUser && { color: colors.primary, fontWeight: 'bold' }]}>
+                            {label}
+                        </Text>
+                        {scenario.potential_xp > 0 && (
+                            <Text style={[styles.xpReward, { color: '#FFD700' }]}>
+                                +{scenario.potential_xp} XP Potential
+                            </Text>
+                        )}
+                    </View>
                     <Text style={[styles.twinAmount, { color: colors.onSurface }, isUser && { color: colors.primary, fontWeight: 'bold' }]}>
                         RM {scenario.savings.toLocaleString()} saved
                     </Text>
@@ -154,9 +161,16 @@ export default function TwinScreen({ navigation }) {
                 <View style={[styles.card, { backgroundColor: colors.surface }]}>
                     <View style={styles.xpHeader}>
                         <Text style={[styles.cardTitle, { color: colors.onSurface }]}>XP Progress</Text>
-                        <Text style={{ color: colors.onSurface, opacity: 0.6 }}>
-                            {gamification_profile.current_xp} XP Total
-                        </Text>
+                        <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={{ color: colors.onSurface, opacity: 0.6, fontSize: 12 }}>
+                                {gamification_profile.current_xp} XP Earned
+                            </Text>
+                            {twinData.estimated_xp > 0 && (
+                                <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 12 }}>
+                                    +{twinData.estimated_xp} Potential XP
+                                </Text>
+                            )}
+                        </View>
                     </View>
                     <ProgressBar progress={progressToNextLevel} color="#FFD700" />
                     <Text style={[styles.xpHint, { color: colors.onSurface }]}>Beat twins at the end of the month to gain XP!</Text>
@@ -238,6 +252,7 @@ const styles = StyleSheet.create({
     twinHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
     twinLabel: { fontSize: 14, fontWeight: '600' },
     twinAmount: { fontSize: 14 },
+    xpReward: { fontSize: 10, fontWeight: 'bold' },
     twinDesc: { fontSize: 11, opacity: 0.6, marginTop: 4 },
     divider: { height: 1, backgroundColor: '#eee', marginVertical: 10 },
 

@@ -105,9 +105,13 @@ export const api = {
 };
 
 export const chatService = {
-  sendQuery: async (question) => {
+  sendQuery: async (question, currency = 'USD') => {
     const encodedQuestion = encodeURIComponent(question);
-    return apiRequest(`/reports/simulate?user_question=${encodedQuestion}`, {
+    let url = `/reports/simulate?user_question=${encodedQuestion}`;
+    if (currency) {
+      url += `&currency=${encodeURIComponent(currency)}`;
+    }
+    return apiRequest(url, {
       method: 'POST',
     });
   },

@@ -19,11 +19,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { chatService } from "../services/apiClient";
 import Markdown from 'react-native-markdown-display';
 import PortfolioReport from '../components/PortfolioReport';
+import { useSettings } from "../contexts/SettingsContext";
 import { LinearGradient } from "expo-linear-gradient";
 import AnimatedHeader from "../components/AnimatedHeader";
 
 export default function ChatScreen({ navigation }) {
   const { colors } = useTheme();
+  const { currency } = useSettings();
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -135,7 +137,7 @@ export default function ChatScreen({ navigation }) {
     setIsLoading(true);
 
     try {
-      const response = await chatService.sendQuery(textToSend.trim());
+      const response = await chatService.sendQuery(textToSend.trim(), currency);
 
       let aiResponseText = "";
       if (response && response.simulation_report) {

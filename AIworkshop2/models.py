@@ -185,6 +185,7 @@ class TwinScenario(BaseModel):
     needs: float
     wants: float
     savings: float
+    potential_xp: int = Field(0)
 
 class TwinDashboard(BaseModel):
     user_stats: TwinScenario
@@ -193,6 +194,7 @@ class TwinDashboard(BaseModel):
     hard_twin: TwinScenario
     gamification_profile: GamificationProfile
     battle_status: str
+    estimated_xp: int = Field(0)
 
 class UserSignup(BaseModel):
     email: str

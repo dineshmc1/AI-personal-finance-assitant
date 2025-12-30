@@ -18,104 +18,90 @@ logging.basicConfig(level=logging.INFO)
 
 def analyze_recent_transactions(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Analyzes transactions over the last 90 days to calculate average monthly income
-    and spending by category.
+    Analyzes transactions to calculate average monthly income and spending by category.
+    Uses YYYY-MM bucketization for accurate averaging across months.
     """
     if not transactions:
-        return {"error": "No transactions provided for analysis."}
+        return {"avg_monthly_income": 0.0, "avg_monthly_spending": {}}
         
-    start_date_90_days = date.today() - timedelta(days=90)
+    monthly_buckets = defaultdict(lambda: {"income": 0.0, "spending": defaultdict(float)})
     
-    recent_txs = []
     for tx in transactions:
         try:
-            # 兼容处理：如果是字符串，转换；如果是 date 对象，直接比较
             raw_date = tx.get('transaction_date')
             if isinstance(raw_date, str):
-                tx_date = date.fromisoformat(raw_date.split('T')[0]) # 处理可能带时间的情况
+                tx_date = date.fromisoformat(raw_date.split('T')[0])
             elif isinstance(raw_date, (date, datetime)):
                 tx_date = raw_date
             else:
                 continue
 
-            if tx_date >= start_date_90_days:
-                recent_txs.append(tx)
-        except (ValueError, KeyError):
+            month_key = tx_date.strftime("%Y-%m")
+            amount = float(tx.get('amount', 0.0))
+            tx_type = tx.get('type')
+            
+            if tx_type == 'Expense':
+                category = tx.get('category', 'Uncategorized')
+                monthly_buckets[month_key]["spending"][category] += amount
+            elif tx_type == 'Income':
+                monthly_buckets[month_key]["income"] += amount
+        except (ValueError, KeyError, TypeError):
             continue
-            
-    category_spending = defaultdict(float)
-    total_income = 0.0
-    
-    for tx in recent_txs:
-        amount = float(tx.get('amount', 0.0)) # 强制转 float
-        tx_type = tx.get('type')
-        
-        if tx_type == 'Expense':
-            category = tx.get('category', 'Uncategorized')
-            category_spending[category] += amount
-        elif tx_type == 'Income':
-            total_income += amount
-            
-    if not recent_txs:
-        # 返回全0数据而不是报错，防止后续流程中断
+
+    if not monthly_buckets:
         return {
             "avg_monthly_income": 0.0,
             "avg_monthly_spending": {}
         }
         
-    # 计算天数跨度，防止除以0
-    if len(recent_txs) > 0:
-        first_date_val = recent_txs[0]['transaction_date']
-        if isinstance(first_date_val, str):
-            first_date = date.fromisoformat(first_date_val.split('T')[0])
-        else:
-            first_date = first_date_val
+    num_months = len(monthly_buckets)
+    total_income = sum(data["income"] for data in monthly_buckets.values())
+    
+    category_totals = defaultdict(float)
+    for data in monthly_buckets.values():
+        for cat, amt in data["spending"].items():
+            category_totals[cat] += amt
             
-        days_in_period = (date.today() - first_date).days
-        factor = days_in_period / 90.0 if days_in_period > 10 else 0.1 # 避免刚开始几天 factor 极小导致平均值爆炸
-    else:
-        factor = 1.0
-    
-    # === 修复：强制转换为 Python float，避免 numpy 类型错误 ===
+    avg_monthly_income = float(round(total_income / num_months, 2))
     avg_monthly_spending = {
-        cat: float(round((amount / factor), 2))
-        for cat, amount in category_spending.items()
+        cat: float(round(amt / num_months, 2))
+        for cat, amt in category_totals.items()
     }
-    
-    avg_monthly_income = float(round((total_income / factor), 2))
     
     return {
         "avg_monthly_income": avg_monthly_income,
-        "avg_monthly_spending": avg_monthly_spending
+        "avg_monthly_spending": avg_monthly_spending,
+        "num_months_analyzed": num_months
     }
 
-def generate_budget_prompt(analysis: Dict[str, Any], fhs_report: Dict[str, Any], lstm_report: Dict[str, Any]) -> str:
+def generate_budget_prompt(analysis: Dict[str, Any], fhs_report: Dict[str, Any], lstm_report: Dict[str, Any], currency: str = "USD") -> str:
     """
-    Constructs a detailed prompt for the GPT model.
+    Constructs a detailed prompt for the GPT model, respecting the user's currency.
     """
     
     fhs_summary = fhs_report.get('summary', {})
     lstm_summary = lstm_report.get('summary', {})
     
-    # 安全获取数值
     income = analysis.get('avg_monthly_income', 0.0)
+    accurate_spending = analysis.get('accurate_total_spending', 0.0)
+    symbol = "RM" if currency == "MYR" else currency
     
     prompt = f"You are an expert financial assistant creating a smart, 'one-tap' budget for a user.\n"
-    prompt += f"The user wants a monthly budget allocation based on their last 90 days of activity.\n\n"
+    prompt += f"The user wants a monthly budget allocation based on their accurate 3rd-month average activity.\n\n"
     
-    prompt += "--- Financial Data ---\n"
-    prompt += f"Average Monthly Income (Last 90 days): RM {income:.2f}\n"
-    prompt += f"Average Monthly Spending by Category (Last 90 days): {analysis.get('avg_monthly_spending', {})}\n"
+    prompt += "--- Financial Data (Accurate 3-Month Averages) ---\n"
+    prompt += f"Average Monthly Income: {symbol} {income:.2f}\n"
+    prompt += f"Average Total Monthly Spending: {symbol} {accurate_spending:.2f}\n"
+    prompt += f"Spending Breakdown by Category: {analysis.get('avg_monthly_spending', {})}\n"
     
     prompt += "\n--- Financial Health and Forecast Context ---\n"
     prompt += f"Financial Health Score (FHS): {fhs_summary.get('latest_fhs', 'N/A')}\n"
     prompt += f"FHS Risk Profile: {fhs_summary.get('risk_profile', 'Moderate')}\n"
-    prompt += f"Forecasted Monthly Net Flow (LSTM): RM {lstm_summary.get('net_flow_forecast', 0.0):.2f}\n"
+    prompt += f"Forecasted Monthly Net Flow (LSTM): {symbol} {lstm_summary.get('net_flow_forecast', 0.0):.2f}\n"
     prompt += f"Recommendation: {fhs_summary.get('recommendation', 'Maintain current habits.')}\n"
     
-    
     prompt += "\n--- Task ---\n"
-    prompt += f"Generate a new, optimized **monthly budget allocation** (in RM and percentage) for the following standard categories. The total allocation MUST equal the Average Monthly Income (RM {income:.2f})."
+    prompt += f"Generate a new, optimized **monthly budget allocation** (in {symbol} and percentage) for the following standard categories. The total allocation MUST equal the Average Monthly Income ({symbol} {income:.2f})."
     prompt += "\n\nStandard Categories to allocate:"
     prompt += "\n1. Bills (must cover average 'Bills' and 'Rent' spending)"
     prompt += "\n2. Food (must cover average 'Groceries' and 'Dining Out' spending)"
@@ -124,6 +110,7 @@ def generate_budget_prompt(analysis: Dict[str, Any], fhs_report: Dict[str, Any],
     prompt += "\n5. Savings (A separate, mandatory allocation for an Emergency Fund or Short-term goal)"
     prompt += "\n6. Investment (A separate, mandatory allocation for long-term growth, prioritizing this if the FHS risk is Low and Net Flow is positive.)"
     
+    prompt += f"\n\nIMPORTANT: Use {symbol} for all currency values. DO NOT convert to any other currency."
     prompt += "\n\nProvide the output in a JSON object with two top-level keys: 'budget_allocation' (a list of objects) and 'explanation' (a string). Ensure the allocation is detailed and the total matches the monthly income."
     prompt += "\n\nJSON Output Format (Strictly adhere to this):\n"
     prompt += "{\n"
@@ -145,14 +132,25 @@ async def generate_auto_budget(
     db: firestore.client,
     fhs_report: Dict[str, Any],
     lstm_report: Dict[str, Any],
+    currency: str = "USD"
 ) -> Dict[str, Any]:
     """
     Main function to generate the budget using historical data and the GPT model.
     """
     
     try:
+        from balance_manager import get_average_metrics_last_3_months
         
-        transactions_ref = db.collection('transactions').where("user_id", "==", user_id).order_by("transaction_date", direction=firestore.Query.DESCENDING).limit(500)
+        # 1. Get accurate 3-month average from aggregated collection
+        metrics = await get_average_metrics_last_3_months(user_id, db)
+        avg_income = metrics.get("avg_monthly_income", 0.0)
+        avg_spending = metrics.get("avg_monthly_spending", 0.0)
+        
+        # 2. Get transaction history for category breakdown
+        transactions_ref = db.collection('transactions')\
+            .where("user_id", "==", user_id)\
+            .order_by("transaction_date", direction=firestore.Query.DESCENDING)\
+            .limit(500)
         docs = transactions_ref.stream()
         
         transactions = []
@@ -166,10 +164,13 @@ async def generate_auto_budget(
             return {"error": "No transaction history found to generate a budget."}
             
         analysis = analyze_recent_transactions(transactions)
-        if "error" in analysis:
-            return analysis
+        
+        # Override the potentially skewed averages with the accurate ones
+        analysis['avg_monthly_income'] = avg_income
+        # We keep the category breakdown but the AI will use the new spending total for context
+        analysis['accurate_total_spending'] = avg_spending
             
-        prompt = generate_budget_prompt(analysis, fhs_report, lstm_report)
+        prompt = generate_budget_prompt(analysis, fhs_report, lstm_report, currency=currency)
         
         try:
             response = OPENAI_CLIENT.chat.completions.create(
@@ -186,7 +187,8 @@ async def generate_auto_budget(
             budget_recommendation = json.loads(model_response)
             
             budget_recommendation["data_context"] = {
-                "income": analysis['avg_monthly_income'],
+                "income": avg_income,
+                "spending": avg_spending,
                 "spending_breakdown": analysis['avg_monthly_spending'],
                 "fhs": fhs_report.get('summary', {}).get('latest_fhs'),
                 "lstm_net_flow": lstm_report.get('summary', {}).get('net_flow_forecast')

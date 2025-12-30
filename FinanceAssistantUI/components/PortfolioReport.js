@@ -4,6 +4,7 @@ import { LineChart, PieChart } from 'react-native-chart-kit';
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSettings } from '../contexts/SettingsContext';
+import { apiRequest } from '../services/apiClient';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -33,6 +34,7 @@ export default function PortfolioReport({ report, onRetrain, isRetraining }) {
         'Cash': true,
     });
     const [showConfig, setShowConfig] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     if (!report) return null;
 
@@ -57,6 +59,22 @@ export default function PortfolioReport({ report, onRetrain, isRetraining }) {
     const handleRetrain = () => {
         const included = Object.keys(assetSelection).filter(k => assetSelection[k]).join(',');
         onRetrain(included);
+    };
+
+    const handleSavePortfolio = async () => {
+        setIsSaving(true);
+        try {
+            await apiRequest('/reports/optimization/save', {
+                method: 'POST',
+                body: JSON.stringify(report)
+            });
+            alert("Portfolio saved successfully! It will now load automatically.");
+        } catch (err) {
+            console.error("Save Error:", err);
+            alert("Failed to save portfolio: " + err.message);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -223,6 +241,22 @@ export default function PortfolioReport({ report, onRetrain, isRetraining }) {
                     </TouchableOpacity>
                 </View>
             )}
+
+            {/* 5. Save Button (Always visible if report exists) */}
+            <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: colors.secondaryContainer }]}
+                onPress={handleSavePortfolio}
+                disabled={isSaving}
+            >
+                {isSaving ? (
+                    <ActivityIndicator color={colors.secondary} />
+                ) : (
+                    <>
+                        <MaterialCommunityIcons name="content-save-outline" size={20} color={colors.secondary} style={{ marginRight: 8 }} />
+                        <Text style={[styles.saveButtonText, { color: colors.secondary }]}>Save This Portfolio</Text>
+                    </>
+                )}
+            </TouchableOpacity>
         </View>
     );
 }
@@ -251,5 +285,18 @@ const styles = StyleSheet.create({
     switchRow: { width: '50%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 10, marginBottom: 8 },
 
     trainButton: { padding: 14, borderRadius: 24, alignItems: 'center', marginTop: 16 },
-    trainButtonText: { fontWeight: 'bold' }
+    trainButtonText: { fontWeight: 'bold' },
+
+    saveButton: {
+        padding: 14,
+        borderRadius: 24,
+        alignItems: 'center',
+        marginTop: 12,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: 'rgba(0,0,0,0.1)'
+    },
+    saveButtonText: { fontWeight: 'bold' }
 });

@@ -7,10 +7,12 @@ import { useTheme, Button } from "react-native-paper";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 import { useAuth } from "../contexts/AuthContext";
 import { useTransactions } from "../contexts/TransactionContext";
-import { api } from "../services/apiClient";
+import { api, getApiBaseUrl } from "../services/apiClient";
 
 export default function ProfileScreen({ navigation }) {
   const { colors } = useTheme();
@@ -94,6 +96,60 @@ export default function ProfileScreen({ navigation }) {
       Alert.alert("Error", "Could not connect to backend. Check connection.");
     } finally {
       setTestLoading(false);
+    }
+  };
+
+  const [downloadLoading, setDownloadLoading] = useState(false);
+
+  // === PDF Export Handler ===
+  const handleDownloadReport = async () => {
+    setDownloadLoading(true);
+    try {
+      if (!user) {
+        Alert.alert("Error", "You must be logged in to download reports.");
+        return;
+      }
+
+      const token = await user.getIdToken();
+      const baseUrl = getApiBaseUrl();
+      const downloadUrl = `${baseUrl}/reports/export/pdf`;
+      const filename = `Financial_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+
+      console.log("Downloading PDF from:", downloadUrl);
+
+      const downloadRes = await FileSystem.downloadAsync(
+        downloadUrl,
+        fileUri,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (downloadRes.status !== 200) {
+        throw new Error(`Failed to download: ${downloadRes.status}`);
+      }
+
+      console.log("PDF saved to:", downloadRes.uri);
+
+      // Open Sharing Dialog
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadRes.uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Your Financial Report',
+          UTI: 'com.adobe.pdf'
+        });
+      } else {
+        Alert.alert("Success", "Report downloaded to: " + downloadRes.uri);
+      }
+
+    } catch (error) {
+      console.error("PDF Export Error:", error);
+      Alert.alert("Export Failed", error.message || "An unexpected error occurred.");
+    } finally {
+      setDownloadLoading(false);
     }
   };
 
@@ -296,13 +352,23 @@ export default function ProfileScreen({ navigation }) {
           </TouchableOpacity>
 
           {/* 3. Data & Reports */}
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.settingItem, { backgroundColor: colors.surface }]}
+            onPress={handleDownloadReport}
+            disabled={downloadLoading}
+          >
             <MaterialCommunityIcons name="chart-box" size={24} color={colors.primary} />
             <View style={styles.settingInfo}>
               <Text style={[styles.settingTitle, { color: colors.onSurface }]}>Data & Reports</Text>
-              <Text style={[styles.settingDesc, { color: colors.onSurface }]}>View your financial reports</Text>
+              <Text style={[styles.settingDesc, { color: colors.onSurface }]}>
+                {downloadLoading ? "Generating PDF..." : "View your financial reports"}
+              </Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
+            {downloadLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurface} />
+            )}
           </TouchableOpacity>
 
           {/* --- SYSTEM CHECK BUTTON --- */}

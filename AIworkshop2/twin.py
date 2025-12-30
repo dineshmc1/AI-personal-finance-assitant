@@ -20,7 +20,7 @@ LEVEL_XP_BASE = 1000
 XP_PER_TRANSACTION = 10
 XP_BEAT_EASY = 100
 XP_BEAT_MEDIUM = 300
-XP_BEAT_HARD = 500
+XP_BEAT_HARD = 600
 
 def get_db():
     try:
@@ -73,6 +73,7 @@ def update_xp(user_id: str, amount: int, db):
 def generate_twin_logic(user_income: float, user_expenses: float, transactions: List[Dict]) -> Dict[str, TwinScenario]:
     """
     Generates the 3 levels of Digital Twins based on user data.
+    Hierarchy: Easy < Medium < Hard savings goals.
     """
     needs_categories = ["Housing", "Transportation", "Vehicle", "Financial Expenses", "Income"]
     wants_categories = ["Food", "Shopping", "Entertainment", "Other"]
@@ -82,75 +83,67 @@ def generate_twin_logic(user_income: float, user_expenses: float, transactions: 
     
     for t in transactions:
         if t['type'] == "Expense":
-            if t['category'] in needs_categories:
+            cat = t.get('category', 'Other')
+            if cat in needs_categories:
                 user_needs += t['amount']
-            elif t['category'] in wants_categories:
-                user_wants += t['amount']
             else:
-                user_wants += t['amount'] 
+                user_wants += t['amount']
 
     user_balance = user_income - user_expenses
     user_savings_rate = (user_balance / user_income * 100) if user_income > 0 else 0
     
-    # Easy Twin logic
-    easy_wants = user_wants * 0.90
-    easy_needs = user_needs 
-    easy_expense = easy_needs + easy_wants
-    easy_balance = user_income - easy_expense
+    # 1. Easy Twin: 20% Savings, 80% Spending
+    easy_savings_rate = 20.0
+    easy_expense_target = user_income * 0.80
+    easy_balance = user_income - easy_expense_target
     
     easy_twin = TwinScenario(
         difficulty="Easy Twin",
         income=user_income,
-        expenses=easy_expense,
+        expenses=easy_expense_target,
         balance=easy_balance,
-        savings_rate=(easy_balance / user_income * 100) if user_income > 0 else 0,
-        description="Cuts discretionary spending (Food, Shopping) by 10%.",
-        needs=easy_needs,
-        wants=easy_wants,
-        savings=easy_balance
+        savings_rate=easy_savings_rate,
+        description="A relaxed goal: 20% Savings, 80% Spending.",
+        needs=easy_expense_target * 0.625, # 50% of total income if 80% is spent
+        wants=easy_expense_target * 0.375, # 30% of total income if 80% is spent
+        savings=easy_balance,
+        potential_xp=XP_BEAT_EASY
     )
 
-    # Medium Twin logic
-    med_wants = user_wants * 0.75
-    med_needs = user_needs * 0.95
-    med_expense = med_needs + med_wants
-    med_balance = user_income - med_expense
+    # 2. Medium Twin: 50% Savings, 50% Spending
+    med_savings_rate = 50.0
+    med_expense_target = user_income * 0.50
+    med_balance = user_income - med_expense_target
     
     medium_twin = TwinScenario(
         difficulty="Medium Twin",
         income=user_income,
-        expenses=med_expense,
+        expenses=med_expense_target,
         balance=med_balance,
-        savings_rate=(med_balance / user_income * 100) if user_income > 0 else 0,
-        description="Optimizes bills by 5% and cuts wants by 25%.",
-        needs=med_needs,
-        wants=med_wants,
-        savings=med_balance
+        savings_rate=med_savings_rate,
+        description="A balanced goal: 50% Savings, 50% Spending.",
+        needs=med_expense_target * 0.625, 
+        wants=med_expense_target * 0.375,
+        savings=med_balance,
+        potential_xp=XP_BEAT_MEDIUM
     )
 
-    # Hard Twin logic
-    target_expense = user_income * 0.80
+    # 3. Hard Twin: 70% Savings, 30% Spending
+    hard_savings_rate = 70.0
+    hard_expense_target = user_income * 0.30
+    hard_balance = user_income - hard_expense_target
     
-    if user_expenses < target_expense:
-        hard_expense = user_expenses * 0.95
-    else:
-        hard_expense = target_expense
-        
-    hard_balance = user_income - hard_expense
-    
-    hard_needs = hard_expense * (50/80) 
-    hard_wants = hard_expense * (30/80)
-
     hard_twin = TwinScenario(
         difficulty="Hard Twin",
         income=user_income, 
-        expenses=hard_expense,
+        expenses=hard_expense_target,
         balance=hard_balance,
-        savings_rate=(hard_balance / user_income * 100) if user_income > 0 else 0,
-        description="Targeting the Golden 50/30/20 Rule.",
-        needs=hard_needs,
-        wants=hard_wants,
-        savings=hard_balance
+        savings_rate=hard_savings_rate,
+        description="An aggressive goal: 70% Savings, 30% Spending.",
+        needs=hard_expense_target * 0.625, 
+        wants=hard_expense_target * 0.375,
+        savings=hard_balance,
+        potential_xp=XP_BEAT_HARD
     )
     
     user_scenario = TwinScenario(
@@ -162,7 +155,8 @@ def generate_twin_logic(user_income: float, user_expenses: float, transactions: 
         description="Your actual financial performance this month.",
         needs=user_needs,
         wants=user_wants,
-        savings=user_balance
+        savings=user_balance,
+        potential_xp=0
     )
     
     return {
@@ -219,13 +213,22 @@ async def get_twin_dashboard(
     elif user_bal > scenarios['easy'].balance:
         status_msg = "Good start! You're beating the Easy Twin."
         
+    est_xp = 0
+    if scenarios['user'].balance > scenarios['easy'].balance:
+        est_xp += XP_BEAT_EASY
+    if scenarios['user'].balance > scenarios['medium'].balance:
+        est_xp += XP_BEAT_MEDIUM
+    if scenarios['user'].balance > scenarios['hard'].balance:
+        est_xp += XP_BEAT_HARD
+
     return TwinDashboard(
         user_stats=scenarios['user'],
         easy_twin=scenarios['easy'],
         medium_twin=scenarios['medium'],
         hard_twin=scenarios['hard'],
         gamification_profile=profile,
-        battle_status=status_msg
+        battle_status=status_msg,
+        estimated_xp=est_xp
     )
 
 @twin_router.post("/claim-xp")

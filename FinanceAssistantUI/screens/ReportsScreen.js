@@ -31,7 +31,20 @@ export default function ReportsScreen({ navigation }) {
     const loadOptimizationReport = async () => {
         try {
             setError(null);
-            // Fetch data from your backend RL endpoint
+            setLoading(true);
+
+            // 1. Try to load saved portfolio first
+            const savedData = await apiRequest('/reports/optimization/saved');
+
+            if (savedData && savedData.status !== 'none') {
+                console.log("Loaded saved portfolio from Firestore.");
+                setReportData(savedData);
+                setLoading(false);
+                return;
+            }
+
+            // 2. If no saved portfolio, trigger new optimization
+            console.log("No saved portfolio, triggering RL training...");
             const data = await apiRequest('/reports/optimization/rl');
 
             if (data) {
@@ -39,7 +52,6 @@ export default function ReportsScreen({ navigation }) {
             }
         } catch (err) {
             console.error("Optimization Report Error:", err);
-            // Handle the specific error message from backend
             const msg = err.message || "Failed to load optimization report.";
             setError(msg);
         } finally {

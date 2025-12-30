@@ -95,7 +95,9 @@ async def recalculate_user_history(user_id: str, db: firestore.client) -> dict:
                 "year": data['year'],
                 "month": data['month'],
                 "balance": monthly_balance_val,
-                "monthly_balance": monthly_balance_val
+                "monthly_balance": monthly_balance_val,
+                "total_income": data['total_income'],
+                "total_expense": data['total_expense']
             }, merge=True)
             
         batch.commit()
@@ -109,6 +111,59 @@ async def recalculate_user_history(user_id: str, db: firestore.client) -> dict:
     except Exception as e:
         print(f"Error recalculating history: {e}")
         return {"status": "error", "message": str(e)}
+
+async def get_average_metrics_last_3_months(user_id: str, db: firestore.client) -> dict:
+    """
+    Fetches average income and expense for the last 3 completed months.
+    Excludes the current month.
+    """
+    try:
+        stats_ref = db.collection('monthly_balances').where("user_id", "==", user_id)\
+            .order_by("year", direction=firestore.Query.DESCENDING)\
+            .order_by("month", direction=firestore.Query.DESCENDING)\
+            .limit(5)
+            
+        docs = stats_ref.stream()
+        
+        income_list = []
+        expense_list = []
+        now = datetime.datetime.now()
+        
+        for doc in docs:
+            data = doc.to_dict()
+            doc_year = data.get('year')
+            doc_month = data.get('month')
+            
+            if doc_year == now.year and doc_month == now.month:
+                continue
+                
+            inc = data.get('total_income', 0.0)
+            exp = data.get('total_expense', 0.0)
+            
+            income_list.append(float(inc))
+            expense_list.append(float(exp))
+            
+            if len(income_list) == 3:
+                break
+            
+        if not income_list:
+            print("No previous monthly data found. Recalculating...")
+            await recalculate_user_history(user_id, db)
+            # Re-fetch after recalculation
+            return await get_average_metrics_last_3_months(user_id, db)
+
+        avg_income = sum(income_list) / len(income_list)
+        avg_expense = sum(expense_list) / len(expense_list)
+        
+        return {
+            "avg_monthly_income": float(round(avg_income, 2)),
+            "avg_monthly_spending": float(round(avg_expense, 2)),
+            "num_months": len(income_list)
+        }
+        
+    except Exception as e:
+        print(f"Error fetching avg metrics: {e}")
+        return {"avg_monthly_income": 0.0, "avg_monthly_spending": 0.0, "num_months": 0}
 
 async def get_average_balance_last_3_months(user_id: str, db: firestore.client) -> float:
     """
