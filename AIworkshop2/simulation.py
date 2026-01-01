@@ -155,7 +155,7 @@ def run_financial_simulation(
     fhs_report: Dict[str, Any],
     lstm_report: Dict[str, Any],
     initial_balance: float,
-    currency: str = "USD",
+    currency: str = "MYR",
     baseline_income: Optional[float] = None,
     baseline_expense: Optional[float] = None
 ) -> Dict[str, Any]:
@@ -283,7 +283,7 @@ async def generate_detailed_report(
     initial_fhs_rating: str,
     budget_analysis: Dict[str, Any] = None,
     twin_scenarios: Dict[str, Any] = None,
-    currency: str = "USD"
+    currency: str = "MYR"
 ) -> str:
     if not openai_client:
         return "OpenAI unavailable."
@@ -339,7 +339,7 @@ async def generate_simulation_report(
     get_balance_func: Any,
     budget_analysis: Dict[str, Any],
     twin_scenarios: Dict[str, Any] = None,
-    currency: str = "USD"
+    currency: str = "MYR"
 ) -> Dict[str, Any]:
     
     if not OPENAI_API_KEY:
