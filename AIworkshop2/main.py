@@ -2,7 +2,7 @@ import firebase_admin
 import logging
 from firebase_admin import initialize_app, credentials, firestore, auth, storage 
 from models import Transaction, TransactionDB, AccountDB, UserSignup
-from vlm import extract_transactions_from_data, VLMTransaction 
+from vlm import extract_transactions_from_data
 from fhsm import generate_fhs_report, classify_fhs
 from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Path, Query
 from lstm import generate_lstm_forecast 

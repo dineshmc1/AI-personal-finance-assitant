@@ -12,10 +12,12 @@ import numpy as np
 from openai import AsyncOpenAI 
 
 logging.basicConfig(level=logging.INFO)
-load_dotenv()
+load_dotenv(override=True)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_URL = os.getenv("OPENAI_API_URL")
+
+print(f"DEBUG: simulation.py loaded. Key: {str(OPENAI_API_KEY)[:10]}... URL: {OPENAI_API_URL}")
 
 if not OPENAI_API_KEY:
     print("Warning: OPENAI_API_KEY missing!")
@@ -26,7 +28,7 @@ if OPENAI_API_URL:
 
 openai_client = AsyncOpenAI(**client_kwargs)
 
-MODEL_MINI = "gpt-4o-mini" 
+MODEL_MINI = "gpt-4o-mini"
 
 EXTRACTION_SCHEMA = {
     "type": "object",
@@ -120,7 +122,16 @@ async def extract_simulation_parameters(user_question: str) -> Dict[str, Any]:
         )
         
         content = response.choices[0].message.content
-        clean_content = clean_json_response(content)
+        # Clean potential markdown
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        clean_content = content.strip()
+        
         extracted_data = json.loads(clean_content)
         
         # Validation override

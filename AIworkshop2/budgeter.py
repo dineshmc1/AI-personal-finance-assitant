@@ -9,9 +9,18 @@ from collections import defaultdict
 from dotenv import load_dotenv
 
 
-load_dotenv()
-OPENAI_CLIENT = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-MODEL_NAME = "gpt-4o-mini" 
+load_dotenv(override=True)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_URL = os.environ.get("OPENAI_API_URL")
+
+print(f"DEBUG: budgeter.py loaded. Key: {str(OPENAI_API_KEY)[:10]}... URL: {OPENAI_API_URL}")
+
+client_kwargs = {"api_key": OPENAI_API_KEY}
+if OPENAI_API_URL:
+    client_kwargs["base_url"] = OPENAI_API_URL
+
+OPENAI_CLIENT = OpenAI(**client_kwargs)
+MODEL_NAME = "openai/gpt-4o-mini" 
 
 logging.basicConfig(level=logging.INFO)
 
@@ -172,6 +181,10 @@ async def generate_auto_budget(
             
         prompt = generate_budget_prompt(analysis, fhs_report, lstm_report, currency=currency)
         
+        extra_headers = {
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "AI Personal Finance Assistant"
+        }
         try:
             response = OPENAI_CLIENT.chat.completions.create(
                 model=MODEL_NAME,
@@ -179,11 +192,19 @@ async def generate_auto_budget(
                     {"role": "system", "content": "You are a precise JSON output generator for financial planning. Only output the requested JSON object."},
                     {"role": "user", "content": prompt}
                 ],
-                response_format={"type": "json_object"}
+                # response_format={"type": "json_object"}, # REMOVED for OpenRouter
+                extra_headers=extra_headers
             )
             
             model_response = response.choices[0].message.content
-            import json
+            # Clean markdown
+            model_response = model_response.strip()
+            if model_response.startswith("```json"):
+                model_response = model_response[7:]
+            if model_response.endswith("```"):
+                model_response = model_response[:-3]
+            model_response = model_response.strip()
+            
             budget_recommendation = json.loads(model_response)
             
             budget_recommendation["data_context"] = {

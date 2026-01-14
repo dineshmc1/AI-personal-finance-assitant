@@ -1,5 +1,5 @@
 # AIworkshop2/vlm.py
-import requests
+
 import json
 import base64
 import os
@@ -11,17 +11,23 @@ import tempfile
 import asyncio 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_URL = os.getenv("OPENAI_API_URL")
 
-if OPENAI_API_URL and not OPENAI_API_URL.endswith("/chat/completions"):
-    CHAT_API_URL = f"{OPENAI_API_URL.rstrip('/')}/chat/completions"
-else:
-    CHAT_API_URL = OPENAI_API_URL
+print(f"DEBUG: vlm.py loaded. Key: {str(OPENAI_API_KEY)[:10]}... URL: {OPENAI_API_URL}")
 
-MODEL = "gpt-4o-mini" 
+from openai import AsyncOpenAI
+
+# Initialize OpenAI Client matching simulation.py logic
+client_kwargs = {"api_key": OPENAI_API_KEY}
+if OPENAI_API_URL:
+    client_kwargs["base_url"] = OPENAI_API_URL
+
+openai_client = AsyncOpenAI(**client_kwargs)
+
+MODEL = "gpt-4o-mini"
 
 VLM_TransactionType = Literal["Income", "Expense"]
 VLM_TransactionCategory = Literal[
@@ -71,9 +77,12 @@ def auto_classify(tx: dict) -> dict:
 
     return tx
 
-
 async def extract_transactions_from_image(data_url: str) -> List[Dict[str, Any]]:
-    """Calls the OpenAI VLM API."""
+    """Calls the OpenAI VLM API using AsyncOpenAI client."""
+    
+    if not openai_client:
+        print("OpenAI client not initialized.")
+        return []
 
     schema_definition = VLMResponse.model_json_schema()
 
@@ -97,50 +106,40 @@ async def extract_transactions_from_image(data_url: str) -> List[Dict[str, Any]]
             {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}} 
         ]}
     ]
-
-    payload = {
-        "model": MODEL,
-        "messages": messages,
-        "response_format": {"type": "json_object"}, 
-        "temperature": 0.0
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
     
-    for attempt in range(3):
-        try:
-            print(f"Requesting OpenAI VLM... Attempt {attempt+1}")
-            response = requests.post(CHAT_API_URL, headers=headers, data=json.dumps(payload), timeout=30)
-            response.raise_for_status()
+    try:
+        print(f"Requesting OpenAI VLM ({MODEL})...")
+        response = await openai_client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.0
+        )
 
-            result = response.json()
-            json_text = result["choices"][0]["message"]["content"]
+        json_text = response.choices[0].message.content
+        # Clean potential markdown
+        json_text = json_text.strip()
+        if json_text.startswith("```json"):
+            json_text = json_text[7:]
+        if json_text.startswith("```"):
+            json_text = json_text[3:]
+        if json_text.endswith("```"):
+            json_text = json_text[:-3]
+        json_text = json_text.strip()
 
-            parsed = VLMResponse.model_validate_json(json_text)
-            final_list = []
+        parsed = VLMResponse.model_validate_json(json_text)
+        final_list = []
 
-            for tx in parsed.transactions:
-                item = tx.model_dump()
-                item = auto_classify(item)
-                final_list.append(item)
+        for tx in parsed.transactions:
+            item = tx.model_dump()
+            item = auto_classify(item)
+            final_list.append(item)
 
-            return final_list
+        return final_list
 
-        except requests.exceptions.RequestException as e:
-            print(f"API Error on attempt {attempt + 1}: {e}")
-            if attempt < 2:
-                await asyncio.sleep(2 ** attempt)
-            else:
-                return []
-
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            print(f"Parsing Error: {e}")
-            return []
-
-    return []
+    except Exception as e:
+        print(f"VLM API Error: {e}")
+        return []
 
 
 async def extract_transactions_from_data(base64_data: str, mime_type: str) -> List[Dict[str, Any]]:
