@@ -1,4 +1,3 @@
-# AI workshop 2/rl.py
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -48,16 +47,13 @@ async def get_rl_optimization_report(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service unavailable")
 
     try:
-        # 1. Fetch User Transactions
         transactions_ref = db.collection('transactions').where("user_id", "==", user_id).order_by("transaction_date")
         docs = transactions_ref.stream()
         transactions = [doc.to_dict() for doc in docs]
         
-        # 2. Check for empty data (Empty State)
         if len(transactions) == 0:
              raise HTTPException(status_code=404, detail="NO_TRANSACTIONS")
 
-        # 3. Calculate FHS (with fallback)
         latest_fhs_score = 50.0 
         fhs_report = generate_fhs_report(transactions)
         if "summary" in fhs_report:

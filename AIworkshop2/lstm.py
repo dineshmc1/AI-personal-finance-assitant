@@ -1,4 +1,3 @@
-# AI workshop 2/lstm.py
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
